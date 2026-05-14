@@ -1,0 +1,65 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ---------- Virtual environments ----------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- uv ----------
+.uv-cache/
+
+# ---------- Environment variables / secrets ----------
+.env
+*.key
+*.pem
+service-account*.json
+gee-credentials*.json
+
+# ---------- Data ----------
+# raw satellite data is huge — never commit
+data/raw/
+# processed parquet can be small; keep but cap size in PRs
+data/processed/*.tif
+data/processed/*.nc
+data/cache/
+
+# ---------- Notebooks ----------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ---------- Testing / coverage ----------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---------- Ruff / linters ----------
+.ruff_cache/
+.mypy_cache/
+
+# ---------- IDEs ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+.antigravity/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Streamlit ----------
+.streamlit/secrets.toml
