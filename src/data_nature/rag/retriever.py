@@ -8,8 +8,8 @@ from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 _CHROMA_SETTINGS = Settings(anonymized_telemetry=False)
 
-_COLLECTION     = "data_nature_papers_v4"   # v4 = ONNX embedding (no transformers dep)
-_MAX_PER_SOURCE = 2                          # diversity cap: at most N results from the same paper
+_COLLECTION = "data_nature_papers_v4"  # v4 = ONNX embedding (no transformers dep)
+_MAX_PER_SOURCE = 2  # diversity cap: at most N results from the same paper
 
 
 class ChromaRetriever:
@@ -45,10 +45,7 @@ class ChromaRetriever:
             self._col.add(
                 ids=[f"c{start + i}" for i in range(len(batch))],
                 documents=[c["text"] for c in batch],
-                metadatas=[
-                    {"source": c["source"], "chunk_id": str(c["chunk_id"])}
-                    for c in batch
-                ],
+                metadatas=[{"source": c["source"], "chunk_id": str(c["chunk_id"])} for c in batch],
             )
 
     def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
@@ -58,8 +55,8 @@ class ChromaRetriever:
         n_fetch = min(top_k * 4, self._col.count())
         res = self._col.query(query_texts=[query], n_results=n_fetch)
 
-        docs      = res["documents"] or [[]]
-        metas     = res["metadatas"] or [[]]
+        docs = res["documents"] or [[]]
+        metas = res["metadatas"] or [[]]
         distances = res["distances"] or [[]]
 
         candidates = [

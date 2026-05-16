@@ -15,10 +15,7 @@ def set_page_config(
     This must be the first Streamlit command called on any page.
     """
     st.set_page_config(
-        page_title=title,
-        page_icon=icon,
-        layout=layout,
-        initial_sidebar_state="expanded"
+        page_title=title, page_icon=icon, layout=layout, initial_sidebar_state="expanded"
     )
 
     st.markdown(
@@ -85,5 +82,5 @@ def set_page_config(
         }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )

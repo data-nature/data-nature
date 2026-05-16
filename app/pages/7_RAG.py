@@ -14,7 +14,7 @@ from pathlib import Path
 
 # ── path setup (must come before any local imports) ───────────────────────────
 _ROOT = Path(__file__).resolve().parents[2]
-_APP  = _ROOT / "app"
+_APP = _ROOT / "app"
 for _p in (str(_ROOT / "src"), str(_APP)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -27,7 +27,7 @@ from data_nature.rag import PAPER_INFO, ChromaRetriever, load_all_chunks  # noqa
 
 load_dotenv(_ROOT / ".env")
 
-PAPERS_DIR   = _ROOT / "papers"
+PAPERS_DIR = _ROOT / "papers"
 _GEMINI_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
 # ── Page config (delegates to ui.py + .streamlit/config.toml) ────────────────
@@ -262,9 +262,7 @@ def _generate_answer(query: str, context: list[dict]) -> str:
     from google import genai  # lazy import
 
     client = genai.Client(api_key=_GEMINI_KEY)
-    ctx_text = "\n\n---\n\n".join(
-        f"[Source: {c['source']}]\n{c['text']}" for c in context
-    )
+    ctx_text = "\n\n---\n\n".join(f"[Source: {c['source']}]\n{c['text']}" for c in context)
     prompt = (
         "You are a research assistant for an ecological monitoring study about "
         "vegetation health (NDVI) and heat anomalies (LST) in Northern Israel.\n\n"
@@ -285,14 +283,14 @@ def _md_to_html(text: str) -> str:
     """Minimal Markdown → HTML for embedding in the styled AI answer div."""
     t = html.escape(text)
     t = re.sub(r"^### (.+)$", r"<h4>\1</h4>", t, flags=re.MULTILINE)
-    t = re.sub(r"^## (.+)$",  r"<h3>\1</h3>", t, flags=re.MULTILINE)
-    t = re.sub(r"^# (.+)$",   r"<h2>\1</h2>", t, flags=re.MULTILINE)
+    t = re.sub(r"^## (.+)$", r"<h3>\1</h3>", t, flags=re.MULTILINE)
+    t = re.sub(r"^# (.+)$", r"<h2>\1</h2>", t, flags=re.MULTILINE)
     t = re.sub(r"\*\*\*(.+?)\*\*\*", r"<strong><em>\1</em></strong>", t)
-    t = re.sub(r"\*\*(.+?)\*\*",     r"<strong>\1</strong>",          t)
-    t = re.sub(r"\*(.+?)\*",         r"<em>\1</em>",                  t)
-    t = re.sub(r"`(.+?)`",           r"<code>\1</code>",              t)
-    t = re.sub(r"^[\-\*] (.+)$",     r"<li>\1</li>",  t, flags=re.MULTILINE)
-    t = re.sub(r"^\d+\. (.+)$",      r"<li>\1</li>",  t, flags=re.MULTILINE)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", t)
+    t = re.sub(r"\*(.+?)\*", r"<em>\1</em>", t)
+    t = re.sub(r"`(.+?)`", r"<code>\1</code>", t)
+    t = re.sub(r"^[\-\*] (.+)$", r"<li>\1</li>", t, flags=re.MULTILINE)
+    t = re.sub(r"^\d+\. (.+)$", r"<li>\1</li>", t, flags=re.MULTILINE)
     t = re.sub(r"((?:<li>.*?</li>\n?)+)", r"<ul>\1</ul>", t, flags=re.DOTALL)
     parts = re.split(r"\n{2,}", t)
     out = []
@@ -390,7 +388,7 @@ if go and query.strip():
         with st.spinner("Generating answer with Gemini…"):
             try:
                 raw_answer = _generate_answer(query, hits)
-                body_html  = _md_to_html(raw_answer)
+                body_html = _md_to_html(raw_answer)
                 st.markdown(
                     f"""
                     <div class="ai-box">
@@ -418,13 +416,13 @@ if go and query.strip():
         unsafe_allow_html=True,
     )
     for rank, chunk in enumerate(hits, start=1):
-        _info   = PAPER_INFO.get(chunk["source"], {})
-        emoji   = _info.get("emoji", "📄")
-        title   = html.escape(_info.get("short_title", chunk["source"]))
-        pct     = round(chunk["score"] * 100, 1)
-        bar_w   = min(round(chunk["score"] * 500), 100)
+        _info = PAPER_INFO.get(chunk["source"], {})
+        emoji = _info.get("emoji", "📄")
+        title = html.escape(_info.get("short_title", chunk["source"]))
+        pct = round(chunk["score"] * 100, 1)
+        bar_w = min(round(chunk["score"] * 500), 100)
         excerpt = html.escape(chunk["text"][:520]) + ("…" if len(chunk["text"]) > 520 else "")
-        src     = html.escape(chunk["source"])
+        src = html.escape(chunk["source"])
         src_short = (src[:65] + "…") if len(src) > 65 else src
 
         st.markdown(

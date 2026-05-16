@@ -33,9 +33,9 @@ PAPER_INFO: dict[str, dict[str, str]] = {
 
 # ── Noise patterns ────────────────────────────────────────────────────────────
 
-_RE_EMAIL  = re.compile(r"\S+@\S+\.\S+")
-_RE_URL    = re.compile(r"https?://\S+|www\.\S+")
-_RE_DOI    = re.compile(r"\bdoi\.org/\S+|\bDOI:\s*\S+", re.IGNORECASE)
+_RE_EMAIL = re.compile(r"\S+@\S+\.\S+")
+_RE_URL = re.compile(r"https?://\S+|www\.\S+")
+_RE_DOI = re.compile(r"\bdoi\.org/\S+|\bDOI:\s*\S+", re.IGNORECASE)
 
 # Lines that are almost certainly noise (short, numeric, affiliation-like)
 _JUNK_LINE = re.compile(
@@ -61,7 +61,7 @@ def _clean_lines(raw: str) -> str:
         line = _RE_URL.sub("", line)
         line = _RE_DOI.sub("", line)
         line = line.strip()
-        if len(line) < 35:              # too short → header / footer / lone number
+        if len(line) < 35:  # too short → header / footer / lone number
             continue
         if _alpha_ratio(line) < 0.55:  # mostly numbers or symbols
             continue
@@ -88,6 +88,7 @@ def _truncate_at_references(words: list[str]) -> list[str]:
 
 # ── Main extraction ───────────────────────────────────────────────────────────
 
+
 def _extract_chunks(
     pdf_path: Path,
     chunk_words: int = 250,
@@ -107,6 +108,7 @@ def _extract_chunks(
     """
     try:
         import pypdf  # noqa: PLC0415
+
         reader = pypdf.PdfReader(str(pdf_path))
         pages_text = [p.extract_text() or "" for p in reader.pages]
     except Exception:
@@ -128,7 +130,7 @@ def _extract_chunks(
         if len(piece) < min_words:
             break
         text = " ".join(piece)
-        if _alpha_ratio(text) < 0.60:   # final sanity filter
+        if _alpha_ratio(text) < 0.60:  # final sanity filter
             continue
         chunks.append(
             {
