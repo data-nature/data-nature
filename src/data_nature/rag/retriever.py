@@ -69,7 +69,7 @@ class ChromaRetriever:
                 "chunk_id": int(str(meta.get("chunk_id", 0))),
                 "score": max(0.0, 1.0 - dist),
             }
-            for doc, meta, dist in zip(docs[0], metas[0], distances[0])
+            for doc, meta, dist in zip(docs[0], metas[0], distances[0], strict=True)
         ]
 
         seen: dict[str, int] = {}

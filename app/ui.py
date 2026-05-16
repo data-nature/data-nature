@@ -1,6 +1,15 @@
+from __future__ import annotations
+
+from typing import Literal
+
 import streamlit as st
 
-def set_page_config(title="Data Nature", icon="🌿", layout="wide"):
+
+def set_page_config(
+    title: str = "Data Nature",
+    icon: str = "🌿",
+    layout: Literal["centered", "wide"] = "wide",
+) -> None:
     """
     Sets the Streamlit page configuration and injects global custom CSS.
     This must be the first Streamlit command called on any page.
@@ -11,7 +20,7 @@ def set_page_config(title="Data Nature", icon="🌿", layout="wide"):
         layout=layout,
         initial_sidebar_state="expanded"
     )
-    
+
     st.markdown(
         """
         <style>
@@ -47,7 +56,7 @@ def set_page_config(title="Data Nature", icon="🌿", layout="wide"):
             box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.4);
             font-weight: 600;
         }
-        
+
         .stButton > button:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.5);
@@ -64,7 +73,7 @@ def set_page_config(title="Data Nature", icon="🌿", layout="wide"):
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease;
         }
-        
+
         [data-testid="metric-container"]:hover {
             transform: translateY(-2px);
         }
