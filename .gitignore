@@ -33,6 +33,8 @@ data/raw/
 data/processed/*.tif
 data/processed/*.nc
 data/cache/
+# ChromaDB vector index — regenerated automatically on first run
+data/processed/chroma/
 
 # ---------- Notebooks ----------
 .ipynb_checkpoints/

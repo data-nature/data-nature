@@ -18,33 +18,31 @@ dependencies = [
     "xarray>=2024.3",
     "rioxarray>=0.15",
     "shapely>=2.0",
-
     # --- satellite ingest ---
     "earthengine-api>=0.1.400",
     "geemap>=0.32",
-
     # --- statistics & ecological models ---
     "scipy>=1.13",
     "statsmodels>=0.14",
-
     # --- machine learning ---
     "scikit-learn>=1.4",
     "torch>=2.2",
-
     # --- visualization ---
     "plotly>=5.20",
     "matplotlib>=3.8",
     "folium>=0.16",
     "streamlit>=1.33",
     "streamlit-folium>=0.20",
-
     # --- reports ---
     "reportlab>=4.1",
-
+    # --- RAG ---
+    "pypdf>=4.0",
     # --- misc ---
     "python-dotenv>=1.0",
     "pydantic>=2.6",
     "tqdm>=4.66",
+    "google-genai>=2.3.0",
+    "chromadb>=1.5.9",
 ]
 
 [project.optional-dependencies]

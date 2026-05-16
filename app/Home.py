@@ -1,14 +1,12 @@
 """Data Nature — Streamlit entry point."""
 
 import streamlit as st
+from ui import set_page_config
 
 from data_nature import __version__
 
-st.set_page_config(
-    page_title="Data Nature",
-    page_icon="🌿",
-    layout="wide",
-)
+set_page_config()
+
 
 st.title("🌿 Data Nature")
 st.subheader("Vegetation health monitoring and heat anomaly detection — Northern Israel")

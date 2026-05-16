@@ -1,0 +1,43 @@
+# ============================================================
+# Data Nature — Streamlit configuration
+# ============================================================
+
+[theme]
+# --- base ---
+base = "light"
+
+# --- colors ---
+# primary: used for buttons, sliders, active widgets
+primaryColor = "#2E7D32"
+
+# backgrounds
+backgroundColor = "#FBFAF7"
+secondaryBackgroundColor = "#EFEDE6"
+
+# text
+textColor = "#1C1B18"
+
+# --- typography ---
+font = "sans serif"
+
+[server]
+# don't auto-open a browser tab every run (less annoying during dev)
+headless = true
+# stop Streamlit from spamming reruns on every tiny file save
+runOnSave = false
+port = 8501
+# use poll instead of watchdog to avoid transformers lazy-import noise
+fileWatcherType = "poll"
+
+[browser]
+# don't send usage stats to Streamlit
+gatherUsageStats = false
+
+[client]
+# cleaner error display for a demo — hide raw tracebacks from users
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[runner]
+# show a friendly message instead of nothing when the script is empty
+magicEnabled = true
