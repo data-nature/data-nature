@@ -1,8 +1,12 @@
-import streamlit as st
-from ui import set_page_config
+from ui import empty_state, page_hero, set_page_config
 
 set_page_config(title="Optimization")
 
-st.title("🧬 Planting Optimization")
+page_hero(
+    title="🧬 Planting Optimization",
+    subtitle="Genetic algorithm to identify optimal planting locations that maximise vegetation health and cooling effect.",
+    pills=["🧬 Genetic Algorithm", "🌳 Optimal Planting", "📍 8 Sites"],
+    emoji="🧬",
+)
 
-st.info("Coming soon — genetic algorithm for optimal planting sites.")
+empty_state("🚧", "Optimization coming soon.<br>Genetic algorithm for optimal planting sites.")

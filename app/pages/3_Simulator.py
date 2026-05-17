@@ -1,8 +1,12 @@
-import streamlit as st
-from ui import set_page_config
+from ui import empty_state, page_hero, set_page_config
 
 set_page_config(title="Simulator")
 
-st.title("🔮 What-If Simulator")
+page_hero(
+    title="🔬 What-If Simulator",
+    subtitle="Cellular-automaton scenarios for modelling vegetation change under different environmental conditions.",
+    pills=["🔄 Cellular Automaton", "🌱 Vegetation Scenarios", "📍 8 Sites"],
+    emoji="🔬",
+)
 
-st.info("Coming soon — cellular-automaton vegetation scenarios.")
+empty_state("🚧", "Simulator coming soon.<br>What-if scenarios for vegetation change.")
