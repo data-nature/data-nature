@@ -1,0 +1,169 @@
+date,site,model,lst_forecast,lst_low,lst_high
+2026-05-17,Hula Valley,Random Forest,31.58,29.98,33.18
+2026-05-18,Hula Valley,Random Forest,32.19,30.59,33.79
+2026-05-19,Hula Valley,Random Forest,32.37,30.77,33.97
+2026-05-20,Hula Valley,Random Forest,33.33,31.73,34.93
+2026-05-21,Hula Valley,Random Forest,33.47,31.87,35.07
+2026-05-22,Hula Valley,Random Forest,33.42,31.82,35.02
+2026-05-23,Hula Valley,Random Forest,33.37,31.77,34.97
+2026-05-17,Hula Valley,Gradient Boosting,31.67,30.27,33.07
+2026-05-18,Hula Valley,Gradient Boosting,32.66,31.26,34.06
+2026-05-19,Hula Valley,Gradient Boosting,32.68,31.28,34.08
+2026-05-20,Hula Valley,Gradient Boosting,33.04,31.64,34.44
+2026-05-21,Hula Valley,Gradient Boosting,32.68,31.28,34.08
+2026-05-22,Hula Valley,Gradient Boosting,33.78,32.38,35.18
+2026-05-23,Hula Valley,Gradient Boosting,33.94,32.54,35.34
+2026-05-17,Hula Valley,LSTM,31.27,30.27,32.27
+2026-05-18,Hula Valley,LSTM,31.76,30.76,32.76
+2026-05-19,Hula Valley,LSTM,32.28,31.28,33.28
+2026-05-20,Hula Valley,LSTM,32.52,31.52,33.52
+2026-05-21,Hula Valley,LSTM,32.71,31.71,33.71
+2026-05-22,Hula Valley,LSTM,33.07,32.07,34.07
+2026-05-23,Hula Valley,LSTM,33.32,32.32,34.32
+2026-05-17,Golan Heights,Random Forest,27.71,26.11,29.31
+2026-05-18,Golan Heights,Random Forest,28.42,26.82,30.02
+2026-05-19,Golan Heights,Random Forest,28.6,27.0,30.2
+2026-05-20,Golan Heights,Random Forest,29.22,27.62,30.82
+2026-05-21,Golan Heights,Random Forest,29.19,27.59,30.79
+2026-05-22,Golan Heights,Random Forest,28.8,27.2,30.4
+2026-05-23,Golan Heights,Random Forest,29.55,27.95,31.15
+2026-05-17,Golan Heights,Gradient Boosting,27.62,26.22,29.02
+2026-05-18,Golan Heights,Gradient Boosting,28.11,26.71,29.51
+2026-05-19,Golan Heights,Gradient Boosting,29.02,27.62,30.42
+2026-05-20,Golan Heights,Gradient Boosting,29.06,27.66,30.46
+2026-05-21,Golan Heights,Gradient Boosting,28.96,27.56,30.36
+2026-05-22,Golan Heights,Gradient Boosting,29.17,27.77,30.57
+2026-05-23,Golan Heights,Gradient Boosting,29.78,28.38,31.18
+2026-05-17,Golan Heights,LSTM,27.21,26.21,28.21
+2026-05-18,Golan Heights,LSTM,27.67,26.67,28.67
+2026-05-19,Golan Heights,LSTM,28.26,27.26,29.26
+2026-05-20,Golan Heights,LSTM,28.82,27.82,29.82
+2026-05-21,Golan Heights,LSTM,28.95,27.95,29.95
+2026-05-22,Golan Heights,LSTM,28.38,27.38,29.38
+2026-05-23,Golan Heights,LSTM,29.46,28.46,30.46
+2026-05-17,Galilee North,Random Forest,30.86,29.26,32.46
+2026-05-18,Galilee North,Random Forest,31.15,29.55,32.75
+2026-05-19,Galilee North,Random Forest,31.37,29.77,32.97
+2026-05-20,Galilee North,Random Forest,32.2,30.6,33.8
+2026-05-21,Galilee North,Random Forest,31.74,30.14,33.34
+2026-05-22,Galilee North,Random Forest,31.5,29.9,33.1
+2026-05-23,Galilee North,Random Forest,32.88,31.28,34.48
+2026-05-17,Galilee North,Gradient Boosting,30.66,29.26,32.06
+2026-05-18,Galilee North,Gradient Boosting,31.13,29.73,32.53
+2026-05-19,Galilee North,Gradient Boosting,31.79,30.39,33.19
+2026-05-20,Galilee North,Gradient Boosting,31.22,29.82,32.62
+2026-05-21,Galilee North,Gradient Boosting,31.62,30.22,33.02
+2026-05-22,Galilee North,Gradient Boosting,31.82,30.42,33.22
+2026-05-23,Galilee North,Gradient Boosting,32.36,30.96,33.76
+2026-05-17,Galilee North,LSTM,30.53,29.53,31.53
+2026-05-18,Galilee North,LSTM,30.86,29.86,31.86
+2026-05-19,Galilee North,LSTM,31.08,30.08,32.08
+2026-05-20,Galilee North,LSTM,30.88,29.88,31.88
+2026-05-21,Galilee North,LSTM,30.91,29.91,31.91
+2026-05-22,Galilee North,LSTM,31.92,30.92,32.92
+2026-05-23,Galilee North,LSTM,32.06,31.06,33.06
+2026-05-17,Galilee South,Random Forest,30.5,28.9,32.1
+2026-05-18,Galilee South,Random Forest,30.97,29.37,32.57
+2026-05-19,Galilee South,Random Forest,31.43,29.83,33.03
+2026-05-20,Galilee South,Random Forest,32.08,30.48,33.68
+2026-05-21,Galilee South,Random Forest,32.66,31.06,34.26
+2026-05-22,Galilee South,Random Forest,32.03,30.43,33.63
+2026-05-23,Galilee South,Random Forest,32.86,31.26,34.46
+2026-05-17,Galilee South,Gradient Boosting,30.83,29.43,32.23
+2026-05-18,Galilee South,Gradient Boosting,31.58,30.18,32.98
+2026-05-19,Galilee South,Gradient Boosting,31.7,30.3,33.1
+2026-05-20,Galilee South,Gradient Boosting,31.49,30.09,32.89
+2026-05-21,Galilee South,Gradient Boosting,32.62,31.22,34.02
+2026-05-22,Galilee South,Gradient Boosting,32.46,31.06,33.86
+2026-05-23,Galilee South,Gradient Boosting,32.78,31.38,34.18
+2026-05-17,Galilee South,LSTM,30.42,29.42,31.42
+2026-05-18,Galilee South,LSTM,30.84,29.84,31.84
+2026-05-19,Galilee South,LSTM,31.47,30.47,32.47
+2026-05-20,Galilee South,LSTM,31.58,30.58,32.58
+2026-05-21,Galilee South,LSTM,32.04,31.04,33.04
+2026-05-22,Galilee South,LSTM,32.35,31.35,33.35
+2026-05-23,Galilee South,LSTM,32.94,31.94,33.94
+2026-05-17,Mount Carmel,Random Forest,29.1,27.5,30.7
+2026-05-18,Mount Carmel,Random Forest,29.11,27.51,30.71
+2026-05-19,Mount Carmel,Random Forest,29.83,28.23,31.43
+2026-05-20,Mount Carmel,Random Forest,29.47,27.87,31.07
+2026-05-21,Mount Carmel,Random Forest,30.11,28.51,31.71
+2026-05-22,Mount Carmel,Random Forest,31.19,29.59,32.79
+2026-05-23,Mount Carmel,Random Forest,30.78,29.18,32.38
+2026-05-17,Mount Carmel,Gradient Boosting,29.54,28.14,30.94
+2026-05-18,Mount Carmel,Gradient Boosting,29.44,28.04,30.84
+2026-05-19,Mount Carmel,Gradient Boosting,29.88,28.48,31.28
+2026-05-20,Mount Carmel,Gradient Boosting,29.99,28.59,31.39
+2026-05-21,Mount Carmel,Gradient Boosting,30.26,28.86,31.66
+2026-05-22,Mount Carmel,Gradient Boosting,30.38,28.98,31.78
+2026-05-23,Mount Carmel,Gradient Boosting,31.04,29.64,32.44
+2026-05-17,Mount Carmel,LSTM,28.45,27.45,29.45
+2026-05-18,Mount Carmel,LSTM,29.21,28.21,30.21
+2026-05-19,Mount Carmel,LSTM,29.64,28.64,30.64
+2026-05-20,Mount Carmel,LSTM,29.72,28.72,30.72
+2026-05-21,Mount Carmel,LSTM,29.82,28.82,30.82
+2026-05-22,Mount Carmel,LSTM,30.35,29.35,31.35
+2026-05-23,Mount Carmel,LSTM,30.42,29.42,31.42
+2026-05-17,Jezreel Valley,Random Forest,34.01,32.41,35.61
+2026-05-18,Jezreel Valley,Random Forest,34.88,33.28,36.48
+2026-05-19,Jezreel Valley,Random Forest,34.78,33.18,36.38
+2026-05-20,Jezreel Valley,Random Forest,35.12,33.52,36.72
+2026-05-21,Jezreel Valley,Random Forest,35.81,34.21,37.41
+2026-05-22,Jezreel Valley,Random Forest,35.53,33.93,37.13
+2026-05-23,Jezreel Valley,Random Forest,35.66,34.06,37.26
+2026-05-17,Jezreel Valley,Gradient Boosting,34.21,32.81,35.61
+2026-05-18,Jezreel Valley,Gradient Boosting,34.78,33.38,36.18
+2026-05-19,Jezreel Valley,Gradient Boosting,34.47,33.07,35.87
+2026-05-20,Jezreel Valley,Gradient Boosting,35.43,34.03,36.83
+2026-05-21,Jezreel Valley,Gradient Boosting,35.38,33.98,36.78
+2026-05-22,Jezreel Valley,Gradient Boosting,36.18,34.78,37.58
+2026-05-23,Jezreel Valley,Gradient Boosting,35.42,34.02,36.82
+2026-05-17,Jezreel Valley,LSTM,33.7,32.7,34.7
+2026-05-18,Jezreel Valley,LSTM,33.73,32.73,34.73
+2026-05-19,Jezreel Valley,LSTM,34.29,33.29,35.29
+2026-05-20,Jezreel Valley,LSTM,34.91,33.91,35.91
+2026-05-21,Jezreel Valley,LSTM,35.09,34.09,36.09
+2026-05-22,Jezreel Valley,LSTM,35.36,34.36,36.36
+2026-05-23,Jezreel Valley,LSTM,35.69,34.69,36.69
+2026-05-17,Jordan Valley,Random Forest,37.33,35.73,38.93
+2026-05-18,Jordan Valley,Random Forest,37.6,36.0,39.2
+2026-05-19,Jordan Valley,Random Forest,37.45,35.85,39.05
+2026-05-20,Jordan Valley,Random Forest,37.94,36.34,39.54
+2026-05-21,Jordan Valley,Random Forest,37.41,35.81,39.01
+2026-05-22,Jordan Valley,Random Forest,38.08,36.48,39.68
+2026-05-23,Jordan Valley,Random Forest,38.64,37.04,40.24
+2026-05-17,Jordan Valley,Gradient Boosting,36.81,35.41,38.21
+2026-05-18,Jordan Valley,Gradient Boosting,37.64,36.24,39.04
+2026-05-19,Jordan Valley,Gradient Boosting,38.33,36.93,39.73
+2026-05-20,Jordan Valley,Gradient Boosting,37.68,36.28,39.08
+2026-05-21,Jordan Valley,Gradient Boosting,38.08,36.68,39.48
+2026-05-22,Jordan Valley,Gradient Boosting,38.7,37.3,40.1
+2026-05-23,Jordan Valley,Gradient Boosting,39.41,38.01,40.81
+2026-05-17,Jordan Valley,LSTM,36.36,35.36,37.36
+2026-05-18,Jordan Valley,LSTM,37.1,36.1,38.1
+2026-05-19,Jordan Valley,LSTM,37.88,36.88,38.88
+2026-05-20,Jordan Valley,LSTM,37.13,36.13,38.13
+2026-05-21,Jordan Valley,LSTM,37.55,36.55,38.55
+2026-05-22,Jordan Valley,LSTM,38.1,37.1,39.1
+2026-05-23,Jordan Valley,LSTM,38.37,37.37,39.37
+2026-05-17,Mount Tabor,Random Forest,30.46,28.86,32.06
+2026-05-18,Mount Tabor,Random Forest,30.04,28.44,31.64
+2026-05-19,Mount Tabor,Random Forest,29.93,28.33,31.53
+2026-05-20,Mount Tabor,Random Forest,31.43,29.83,33.03
+2026-05-21,Mount Tabor,Random Forest,32.01,30.41,33.61
+2026-05-22,Mount Tabor,Random Forest,31.43,29.83,33.03
+2026-05-23,Mount Tabor,Random Forest,31.27,29.67,32.87
+2026-05-17,Mount Tabor,Gradient Boosting,30.16,28.76,31.56
+2026-05-18,Mount Tabor,Gradient Boosting,30.46,29.06,31.86
+2026-05-19,Mount Tabor,Gradient Boosting,30.79,29.39,32.19
+2026-05-20,Mount Tabor,Gradient Boosting,30.82,29.42,32.22
+2026-05-21,Mount Tabor,Gradient Boosting,31.62,30.22,33.02
+2026-05-22,Mount Tabor,Gradient Boosting,31.91,30.51,33.31
+2026-05-23,Mount Tabor,Gradient Boosting,31.6,30.2,33.0
+2026-05-17,Mount Tabor,LSTM,30.06,29.06,31.06
+2026-05-18,Mount Tabor,LSTM,30.77,29.77,31.77
+2026-05-19,Mount Tabor,LSTM,30.5,29.5,31.5
+2026-05-20,Mount Tabor,LSTM,30.65,29.65,31.65
+2026-05-21,Mount Tabor,LSTM,31.01,30.01,32.01
+2026-05-22,Mount Tabor,LSTM,31.53,30.53,32.53
+2026-05-23,Mount Tabor,LSTM,31.13,30.13,32.13
