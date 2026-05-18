@@ -29,7 +29,19 @@ load_dotenv(_ROOT / ".env")
 
 PAPERS_DIR = _ROOT / "papers"
 CHROMA_DIR = _ROOT / "data" / "processed" / "chroma"
-_GEMINI_KEY: str = os.getenv("GEMINI_API_KEY", "") or st.secrets.get("GEMINI_API_KEY", "")
+
+
+def _load_gemini_key() -> str:
+    key = os.getenv("GEMINI_API_KEY", "")
+    if key:
+        return key
+    try:
+        return str(st.secrets.get("GEMINI_API_KEY", ""))
+    except Exception:
+        return ""
+
+
+_GEMINI_KEY: str = _load_gemini_key()
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
