@@ -1,0 +1,69 @@
+{
+  "generated": "2026-05-29",
+  "sites": {
+    "Carmel_Forest": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 10.81,
+      "lst_max": 35.82
+    },
+    "Haifa_Coastal_Urban": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 12.38,
+      "lst_max": 35.36
+    },
+    "Hula_Valley_Wetland": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 11.3,
+      "lst_max": 41.09
+    },
+    "Jezreel_Valley_Agri": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 12.58,
+      "lst_max": 43.79
+    },
+    "Jordan_Valley_Arid": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 12.85,
+      "lst_max": 43.19
+    },
+    "Lower_Galilee_Mixed": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 10.84,
+      "lst_max": 41.35
+    },
+    "Nazareth_Urban": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 11.8,
+      "lst_max": 40.52
+    },
+    "Upper_Galilee_Forest": {
+      "rows": 316,
+      "date_range": "2000-02-01 \u2192 2026-05-01",
+      "lst_null": 0,
+      "ndvi_null": 0,
+      "lst_min": 11.84,
+      "lst_max": 36.37
+    }
+  }
+}
