@@ -3,8 +3,8 @@ from __future__ import annotations
 import io
 import sys
 from datetime import date, datetime
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[2]
 _APP = _ROOT / "app"
@@ -26,6 +26,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # noqa: E4
 from reportlab.lib.units import cm  # noqa: E402
 from reportlab.platypus import (  # noqa: E402
     Image as RLImage,
+)
+from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
     Spacer,

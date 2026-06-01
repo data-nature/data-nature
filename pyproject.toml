@@ -43,6 +43,7 @@ dependencies = [
     "tqdm>=4.66",
     "google-genai>=2.3.0",
     "chromadb>=1.5.9",
+    "pytest>=9.0.3",
 ]
 
 [project.optional-dependencies]
@@ -74,3 +75,9 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --strict-markers"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.13",
+]

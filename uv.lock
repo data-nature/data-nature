@@ -717,6 +717,7 @@ dependencies = [
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pypdf" },
+    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "reportlab" },
     { name = "rioxarray", version = "0.19.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -741,6 +742,12 @@ dev = [
     { name = "ruff" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "chromadb", specifier = ">=1.5.9" },
@@ -758,6 +765,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=16.0" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pypdf", specifier = ">=4.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
@@ -775,6 +783,12 @@ requires-dist = [
     { name = "xarray", specifier = ">=2024.3" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.15.13" },
+]
 
 [[package]]
 name = "debugpy"
