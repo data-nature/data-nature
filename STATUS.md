@@ -90,11 +90,21 @@ tests to understand the relationship between vegetation and temperature.
 
 ---
 
-## What Alaa is working on (her branch: `dn-b1-eda-baselines`)
+## What Alaa built — DN-B1 (merged into main, PR #1)
 
-Alaa built the baseline computation module (`src/data_nature/stats/baselines.py`) and an EDA notebook.
-Her work computes rolling historical baselines per site and per month, validates the data schema,
-and produces `data/processed/site_baselines.csv`. Not yet merged into main.
+- `src/data_nature/stats/baselines.py`
+  Computes rolling historical baselines (mean and std) per site and per calendar month.
+  Also validates all processed CSV files against a frozen data contract schema to catch
+  missing or renamed columns early.
+
+- `data/processed/site_baselines.csv`
+  Pre-computed baseline table for all 8 sites — ready to use without re-running the pipeline.
+
+- `notebooks/eda.ipynb`
+  Exploratory data analysis notebook covering the full dataset.
+
+- `tests/test_baselines.py`
+  Test suite for the baselines module.
 
 ---
 
