@@ -79,5 +79,5 @@ addopts = "-v --strict-markers"
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
-    "ruff>=0.15.13",
+    "pytest-cov>=7.1.0",
 ]
