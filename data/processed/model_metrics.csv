@@ -17,3 +17,12 @@ Jordan_Valley_Arid,Gradient Boosting,1.6362,2.1197,0.945
 Lower_Galilee_Mixed,Gradient Boosting,2.347,2.9878,0.8859
 Nazareth_Urban,Gradient Boosting,2.5023,3.1786,0.8498
 Upper_Galilee_Forest,Gradient Boosting,2.0786,2.8112,0.8428
+ALL,LSTM,2.0988,2.5932,0.9008
+Carmel_Forest,LSTM,2.1693,2.5265,0.8664
+Haifa_Coastal_Urban,LSTM,1.6458,2.0529,0.911
+Hula_Valley_Wetland,LSTM,2.1645,2.7914,0.8849
+Jezreel_Valley_Agri,LSTM,2.0314,2.5428,0.9164
+Jordan_Valley_Arid,LSTM,2.1291,2.5653,0.9194
+Lower_Galilee_Mixed,LSTM,2.6769,3.1547,0.8727
+Nazareth_Urban,LSTM,2.0829,2.5362,0.9044
+Upper_Galilee_Forest,LSTM,1.8908,2.4451,0.8811
