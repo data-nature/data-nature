@@ -1,0 +1,19 @@
+site,model,mae,rmse,r2
+ALL,Random Forest,1.9648,2.4537,0.9112
+Carmel_Forest,Random Forest,2.0778,2.4998,0.8692
+Haifa_Coastal_Urban,Random Forest,1.7149,2.1814,0.8995
+Hula_Valley_Wetland,Random Forest,2.2318,2.7882,0.8851
+Jezreel_Valley_Agri,Random Forest,1.5498,2.0367,0.9463
+Jordan_Valley_Arid,Random Forest,1.5237,1.9044,0.9556
+Lower_Galilee_Mixed,Random Forest,2.1931,2.6707,0.9088
+Nazareth_Urban,Random Forest,2.2694,2.7008,0.8916
+Upper_Galilee_Forest,Random Forest,2.1581,2.6796,0.8572
+ALL,Gradient Boosting,2.0602,2.6883,0.8934
+Carmel_Forest,Gradient Boosting,2.0009,2.5535,0.8635
+Haifa_Coastal_Urban,Gradient Boosting,1.7845,2.3403,0.8843
+Hula_Valley_Wetland,Gradient Boosting,2.3175,3.0105,0.8661
+Jezreel_Valley_Agri,Gradient Boosting,1.815,2.3086,0.9311
+Jordan_Valley_Arid,Gradient Boosting,1.6362,2.1197,0.945
+Lower_Galilee_Mixed,Gradient Boosting,2.347,2.9878,0.8859
+Nazareth_Urban,Gradient Boosting,2.5023,3.1786,0.8498
+Upper_Galilee_Forest,Gradient Boosting,2.0786,2.8112,0.8428
