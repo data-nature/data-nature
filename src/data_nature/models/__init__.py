@@ -16,10 +16,42 @@ from data_nature.models.forecast import (
     run_full_pipeline,
     train_forecasters,
 )
+from data_nature.models.ecology import (
+    EnergyFlow,
+    LogisticGrowth,
+    LotkaVolterra,
+    simulate_energy_flow,
+    simulate_logistic,
+    simulate_lv,
+)
+from data_nature.models.optimization import (
+    COOLING,
+    GRID,
+    SEASON_MONTHS,
+    VEG_BOOST,
+    expected_delta_lst,
+    fitness,
+    init_site_grid,
+    optimize_planting,
+)
 
 __all__ = [
     "train_forecasters",
     "forecast",
     "compute_metrics",
     "run_full_pipeline",
+    "optimize_planting",
+    "init_site_grid",
+    "expected_delta_lst",
+    "fitness",
+    "GRID",
+    "COOLING",
+    "VEG_BOOST",
+    "SEASON_MONTHS",
+    "LogisticGrowth",
+    "simulate_logistic",
+    "EnergyFlow",
+    "simulate_energy_flow",
+    "LotkaVolterra",
+    "simulate_lv",
 ]

@@ -1,20 +1,28 @@
 """
-ecology.py — DN-B5/DN-A6 Ecological models
-===========================================
-Implements two ecological models used in the Simulator page:
+ecology.py — Ecological and heat-budget models.
 
-1. **Lotka-Volterra** (predator–prey) — models interacting native vs invasive
-   vegetation populations competing for the same niche.
+Models
+------
+1. LotkaVolterra (DN-B5)
+   Predator-prey competition between native and invasive vegetation.
+   Governing equations (RK4 integration):
+       dN/dt = r_n * N * (1 - (N + α*I) / K_n)
+       dI/dt = r_i * I * (1 - (I + β*N) / K_i)
 
-2. **Logistic growth** — single-population vegetation dynamics with carrying
-   capacity (used by DN-A6 in the Heatmap page).
+2. LogisticGrowth (DN-A6 / DN-B5)
+   Single-population vegetation dynamics with carrying capacity.
+   Governing equation (RK4 integration):
+       dP/dt = r * P * (1 - P/K)
 
-Public API
-----------
-    LotkaVolterra       — native/invasive vegetation competition model
-    simulate_lv         — convenience: run LV and return trajectory DataFrame
-    LogisticGrowth      — single-population logistic model
-    simulate_logistic   — convenience: run logistic and return trajectory DataFrame
+3. EnergyFlow (DN-A6)
+   Surface heat-budget model driven by solar forcing, modified by NDVI.
+   Governing equation (Euler integration):
+       dT/dt = [Q_in(t) - k_cool * (1 + β_ndvi * NDVI) * (T - T_amb)] / C
+   where:
+       Q_in(t) = Q_solar * (1 - albedo) * (1 + amp * sin(2π * t / period))
+   Equilibrium temperature:
+       T_eq = T_amb + Q_solar*(1-albedo) / (k_cool*(1 + β_ndvi*NDVI))
+   Higher NDVI → stronger cooling → lower T_eq (consistent with DN-A2 regression).
 """
 
 from __future__ import annotations
@@ -26,7 +34,7 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------------
-# 1. Lotka-Volterra competition model
+# 1. Lotka-Volterra competition model  (DN-B5)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -113,18 +121,13 @@ class LotkaVolterra:
         N_vals[0], I_vals[0], t_vals[0] = N, I, 0.0
 
         for k in range(steps):
-            # RK4
             k1N, k1I = self._derivatives(N, I)
             k2N, k2I = self._derivatives(N + dt/2 * k1N, I + dt/2 * k1I)
             k3N, k3I = self._derivatives(N + dt/2 * k2N, I + dt/2 * k2I)
             k4N, k4I = self._derivatives(N + dt    * k3N, I + dt    * k3I)
 
-            N = N + dt/6 * (k1N + 2*k2N + 2*k3N + k4N)
-            I = I + dt/6 * (k1I + 2*k2I + 2*k3I + k4I)
-
-            # clamp to [0, max(K)] — populations cannot go negative
-            N = max(0.0, N)
-            I = max(0.0, I)
+            N = max(0.0, N + dt/6 * (k1N + 2*k2N + 2*k3N + k4N))
+            I = max(0.0, I + dt/6 * (k1I + 2*k2I + 2*k3I + k4I))
 
             t_vals[k+1] = (k+1) * dt
             N_vals[k+1] = N
@@ -161,7 +164,7 @@ def simulate_lv(
 
 
 # ---------------------------------------------------------------------------
-# 2. Logistic growth model  (used by DN-A6)
+# 2. Logistic growth model  (DN-A6 / DN-B5)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -246,4 +249,130 @@ def simulate_logistic(
     """
     if model is None:
         model = LogisticGrowth(**kwargs)
+    return model.simulate(steps=steps, dt=dt)
+
+
+# ---------------------------------------------------------------------------
+# 3. Energy-flow / heat-budget model  (DN-A6)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class EnergyFlow:
+    """Surface heat-budget model driven by solar forcing, modulated by NDVI.
+
+    Governing equation (Euler integration, daily time steps):
+        dT/dt = [Q_in(t) - k_cool * (1 + β_ndvi * NDVI) * (T - T_amb)] / C
+
+    Solar forcing (seasonal sinusoid):
+        Q_in(t) = Q_solar * (1 - albedo) * (1 + amp * sin(2π * t / period))
+
+    Instantaneous equilibrium temperature:
+        T_eq(t) = T_amb + Q_in(t) / (k_cool * (1 + β_ndvi * NDVI))
+
+    Parameters
+    ----------
+    T0 : float
+        Initial surface temperature (°C).
+    Q_solar : float
+        Mean incoming solar irradiance (W m⁻²).
+    albedo : float
+        Surface shortwave albedo (0–1).
+    k_cool : float
+        Combined radiative + convective cooling coefficient (W m⁻² °C⁻¹).
+    beta_ndvi : float
+        NDVI amplifier for evapotranspirative cooling.
+        Higher NDVI → stronger cooling → lower equilibrium T.
+    ndvi : float
+        Vegetation index of the modelled surface (0–1).
+    T_amb : float
+        Ambient (air) temperature (°C).
+    C : float
+        Effective heat capacity of the surface layer (J m⁻² °C⁻¹ / scaling).
+    amp : float
+        Fractional amplitude of seasonal solar variation.
+    period : float
+        Seasonal period in days (default 365).
+    """
+
+    T0:        float = 35.0
+    Q_solar:   float = 450.0
+    albedo:    float = 0.20
+    k_cool:    float = 8.0
+    beta_ndvi: float = 3.0
+    ndvi:      float = 0.4
+    T_amb:     float = 25.0
+    C:         float = 50.0
+    amp:       float = 0.25
+    period:    float = 365.0
+
+    def _q_in(self, t: float) -> float:
+        return self.Q_solar * (1 - self.albedo) * (
+            1 + self.amp * np.sin(2 * np.pi * t / self.period)
+        )
+
+    def _t_eq(self, q_in: float) -> float:
+        return self.T_amb + q_in / (self.k_cool * (1 + self.beta_ndvi * self.ndvi))
+
+    def simulate(self, steps: int = 365, dt: float = 1.0) -> pd.DataFrame:
+        """Integrate the heat-budget ODE using forward Euler.
+
+        Parameters
+        ----------
+        steps : int
+            Number of time steps (days by default).
+        dt : float
+            Time step size (days).
+
+        Returns
+        -------
+        pd.DataFrame with columns: t, T, T_eq, Q_in
+        """
+        t_vals   = np.zeros(steps + 1)
+        T_vals   = np.zeros(steps + 1)
+        Teq_vals = np.zeros(steps + 1)
+        Qin_vals = np.zeros(steps + 1)
+
+        T = self.T0
+        cooling = self.k_cool * (1 + self.beta_ndvi * self.ndvi)
+
+        for k in range(steps + 1):
+            t = k * dt
+            q = self._q_in(t)
+            t_vals[k]   = t
+            T_vals[k]   = T
+            Teq_vals[k] = self._t_eq(q)
+            Qin_vals[k] = q
+            if k < steps:
+                dT = (q - cooling * (T - self.T_amb)) / self.C
+                T += dt * dT
+
+        return pd.DataFrame({
+            "t":    t_vals,
+            "T":    T_vals,
+            "T_eq": Teq_vals,
+            "Q_in": Qin_vals,
+        })
+
+
+def simulate_energy_flow(
+    model: EnergyFlow | None = None,
+    steps: int = 365,
+    dt: float = 1.0,
+    **kwargs,
+) -> pd.DataFrame:
+    """Run an EnergyFlow simulation and return a trajectory DataFrame.
+
+    Parameters
+    ----------
+    model : EnergyFlow, optional
+        Pre-configured model.  If None, built from ``**kwargs``.
+    steps, dt
+        Passed to model.simulate().
+
+    Returns
+    -------
+    pd.DataFrame with columns: t, T, T_eq, Q_in
+    """
+    if model is None:
+        model = EnergyFlow(**kwargs)
     return model.simulate(steps=steps, dt=dt)
