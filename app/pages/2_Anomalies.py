@@ -10,9 +10,12 @@ for _p in (str(_ROOT / "src"), str(_APP)):
         sys.path.insert(0, _p)
 
 import pandas as pd  # noqa: E402
-import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 from ui import page_hero, section_label, set_page_config  # noqa: E402
+
+from data_nature.viz.charts import (  # noqa: E402
+    SEV_BG, SEV_COLOR, STATUS_COLOR, anomaly_timeseries_chart,
+)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -20,40 +23,81 @@ set_page_config(title="Anomaly Detection")
 
 page_hero(
     title="🚨 Anomaly Detection & Alerts",
-    subtitle="Land Surface Temperature anomalies detected via z-score analysis against a 30-day rolling baseline. Filter by site, date, or severity.",
-    pills=["🌡️ LST z-Score", "📅 180-Day Window", "🔴 3 Severity Levels", "📍 8 Sites"],
+    subtitle="Land Surface Temperature anomalies detected via z-score analysis against a historical per-site baseline. Filter by site, date, or severity.",
+    pills=["🌡️ LST z-Score", "📅 2000–2025", "🔴 3 Severity Levels", "📍 8 Sites"],
     emoji="🚨",
 )
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
-MOCK = _ROOT / "data" / "mock"
+_PROCESSED = _ROOT / "data" / "processed"
+_MOCK = _ROOT / "data" / "mock"
 
 
-@st.cache_data
-def _load_timeseries() -> pd.DataFrame:
-    return pd.read_csv(MOCK / "lst_timeseries.csv", parse_dates=["date"])
+def _build_from_processed() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Build (ts_df, anom_df) from real processed CSVs.
+
+    ts_df  — date, site, lst, baseline_mean, baseline_std
+    anom_df — date, site, lst, baseline, z_score, severity, status, ndvi_change
+    """
+    from data_nature.stats import compute_zscores, detect_anomalies
+
+    monthly = pd.read_csv(_PROCESSED / "site_monthly.csv")
+    baselines = pd.read_csv(_PROCESSED / "site_baselines.csv")
+
+    # Build date column (first of month)
+    monthly["date"] = pd.to_datetime(
+        dict(year=monthly["year"], month=monthly["month"], day=1)
+    )
+
+    # Timeseries: merge monthly LST with leave-one-out baselines
+    ts_df = (
+        monthly[["date", "site", "year", "month", "lst"]]
+        .merge(
+            baselines[["site", "year", "month", "baseline_mean", "baseline_std"]],
+            on=["site", "year", "month"],
+            how="left",
+        )
+        .drop(columns=["year", "month"])
+        .sort_values(["site", "date"])
+        .reset_index(drop=True)
+    )
+
+    # Anomaly detection using the stats module
+    enriched = compute_zscores(monthly)
+    # detect_anomalies needs date, site, lst, ndvi, month columns
+    anom_df = detect_anomalies(
+        enriched[["date", "site", "lst", "ndvi", "month", "year"]],
+    )
+    anom_df["date"] = pd.to_datetime(anom_df["date"])
+
+    return ts_df, anom_df
 
 
-@st.cache_data
-def _load_anomalies() -> pd.DataFrame:
-    return pd.read_csv(MOCK / "anomalies.csv", parse_dates=["date"])
+@st.cache_data(show_spinner="Loading anomaly data…")
+def _load() -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+    """Return (ts_df, anom_df, using_real_data)."""
+    try:
+        ts_df, anom_df = _build_from_processed()
+        return ts_df, anom_df, True
+    except Exception:
+        pass
+
+    ts_df = pd.read_csv(_MOCK / "lst_timeseries.csv", parse_dates=["date"])
+    anom_df = pd.read_csv(_MOCK / "anomalies.csv", parse_dates=["date"])
+    return ts_df, anom_df, False
 
 
-ts_df = _load_timeseries()
-anom_df = _load_anomalies()
+ts_df, anom_df, _REAL_DATA = _load()
 
 SITES = ["All sites"] + sorted(ts_df["site"].unique())
-SEV_COLOR = {"Critical": "#DC2626", "Severe": "#EA580C", "Mild": "#CA8A04"}
-SEV_BG = {"Critical": "#FEE2E2", "Severe": "#FFEDD5", "Mild": "#FEF9C3"}
-STATUS_COLOR = {"New": "#2E7D32", "Reviewed": "#1976D2", "Handled": "#6B7280"}
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
 st.markdown(
     """
     <style>
-    /* ── KPI strip ── */
     .kpi-row { display: flex; gap: 14px; margin-bottom: 4px; flex-wrap: wrap; }
     .kpi-card {
       flex: 1; min-width: 110px;
@@ -66,7 +110,6 @@ st.markdown(
     .kpi-value { font-size: 2em; font-weight: 800; color: #1C1B18; line-height: 1; }
     .kpi-sub   { font-size: 0.72em; color: #6b7280; margin-top: 4px; }
 
-    /* ── anomaly table ── */
     .anom-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
     .anom-scroll {
       max-height: 420px; overflow-y: auto;
@@ -92,7 +135,6 @@ st.markdown(
       border-radius: 50%; margin-right: 5px; vertical-align: middle;
     }
 
-    /* ── explanation panel ── */
     .explain-panel {
       background: linear-gradient(135deg, #E8F5E9 0%, #F1F8E9 100%);
       border: 1px solid #A5D6A7; border-radius: 14px;
@@ -120,15 +162,24 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ── Status banner ─────────────────────────────────────────────────────────────
+
+if not _REAL_DATA:
+    st.info("ℹ️ Showing mock data — place real CSVs in `data/processed/` to use live data.")
+
 # ── Filters ───────────────────────────────────────────────────────────────────
 
 section_label("Filters")
+
+# Severity labels present in data — include both "Warning" (real) and "Mild" (mock)
+_sev_opts = ["All", "Critical", "Severe", "Warning", "Mild"]
+_sev_present = [s for s in _sev_opts if s == "All" or s in anom_df["severity"].unique()]
 
 col_site, col_sev, col_status, col_date = st.columns([2, 1.5, 1.5, 2])
 with col_site:
     site_filter = st.selectbox("Site", SITES)
 with col_sev:
-    sev_filter = st.selectbox("Severity", ["All", "Critical", "Severe", "Mild"])
+    sev_filter = st.selectbox("Severity", _sev_present)
 with col_status:
     status_filter = st.selectbox("Status", ["All", "New", "Reviewed", "Handled"])
 with col_date:
@@ -173,12 +224,12 @@ st.markdown(
       <div class="kpi-card">
         <div class="kpi-label">Critical</div>
         <div class="kpi-value" style="color:#DC2626">{n_critical}</div>
-        <div class="kpi-sub">z ≥ 3σ</div>
+        <div class="kpi-sub">z ≥ 3.5σ</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Severe</div>
         <div class="kpi-value" style="color:#EA580C">{n_severe}</div>
-        <div class="kpi-sub">2σ ≤ z &lt; 3σ</div>
+        <div class="kpi-sub">2.5σ ≤ z &lt; 3.5σ</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Needs Review</div>
@@ -221,17 +272,18 @@ with col_table:
             bg = SEV_BG.get(sev, "#fff")
             fc = SEV_COLOR.get(sev, "#374151")
             sc = STATUS_COLOR.get(status, "#6B7280")
-            ndvi = f"{row['ndvi_change']:+.3f}"
+            ndvi_val = row.get("ndvi_change", float("nan"))
+            ndvi_str = f"{ndvi_val:+.3f}" if pd.notna(ndvi_val) else "—"
             rows_html += (
                 f"<tr>"
-                f'<td>{row["date"].strftime("%b %d, %Y")}</td>'
+                f'<td>{row["date"].strftime("%b %Y")}</td>'
                 f'<td>{row["site"]}</td>'
                 f'<td>{row["lst"]:.1f}°C</td>'
                 f'<td>{row["baseline"]:.1f}°C</td>'
                 f"<td><b>{row['z_score']:.2f}σ</b></td>"
                 f'<td><span class="sev-badge" style="background:{bg};color:{fc}">{sev}</span></td>'
                 f'<td><span class="status-dot" style="background:{sc}"></span>{status}</td>'
-                f'<td style="color:#DC2626">{ndvi}</td>'
+                f'<td style="color:#DC2626">{ndvi_str}</td>'
                 "</tr>"
             )
 
@@ -256,7 +308,7 @@ with col_table:
         st.write("")
         section_label("Drill-down")
         event_labels = [
-            f"{row['date'].strftime('%b %d')} · {row['site']} · {row['severity']} ({row['z_score']:.2f}σ)"
+            f"{row['date'].strftime('%b %Y')} · {row['site']} · {row['severity']} ({row['z_score']:.2f}σ)"
             for _, row in filtered.iterrows()
         ]
         selected_idx = st.selectbox(
@@ -286,36 +338,35 @@ with col_explain:
         fc = SEV_COLOR.get(sev, "#374151")
         sc = STATUS_COLOR.get(status, "#6B7280")
         delta_t = sel["lst"] - sel["baseline"]
+        ndvi_change = sel.get("ndvi_change", float("nan"))
+        ndvi_str = f"{ndvi_change:+.3f}" if pd.notna(ndvi_change) else "—"
 
         if sev == "Critical":
             narrative = (
                 f"A <strong>critical heat anomaly</strong> was recorded at <strong>{sel['site']}</strong> "
-                f"on {sel['date'].strftime('%B %d, %Y')}. The land surface temperature reached "
-                f"<strong>{sel['lst']:.1f}°C</strong>, exceeding the 30-day baseline by "
+                f"in {sel['date'].strftime('%B %Y')}. The land surface temperature reached "
+                f"<strong>{sel['lst']:.1f}°C</strong>, exceeding the historical baseline by "
                 f"<strong>+{delta_t:.1f}°C</strong> ({sel['z_score']:.2f}σ)."
                 "<p>At this severity, prolonged heat stress may trigger vegetation die-off and soil "
-                "moisture depletion. An NDVI drop of "
-                f"<strong>{sel['ndvi_change']:+.3f}</strong> corroborates surface degradation. "
+                f"moisture depletion. NDVI change: <strong>{ndvi_str}</strong>. "
                 "Immediate field inspection is recommended.</p>"
             )
         elif sev == "Severe":
             narrative = (
                 f"A <strong>severe temperature spike</strong> was detected at <strong>{sel['site']}</strong> "
-                f"on {sel['date'].strftime('%B %d, %Y')}. LST hit <strong>{sel['lst']:.1f}°C</strong>, "
-                f"<strong>+{delta_t:.1f}°C</strong> above the rolling mean ({sel['z_score']:.2f}σ)."
+                f"in {sel['date'].strftime('%B %Y')}. LST hit <strong>{sel['lst']:.1f}°C</strong>, "
+                f"<strong>+{delta_t:.1f}°C</strong> above the historical mean ({sel['z_score']:.2f}σ)."
                 "<p>Severe anomalies at this site have historically coincided with reduced canopy "
-                "reflectance. The concurrent NDVI change of "
-                f"<strong>{sel['ndvi_change']:+.3f}</strong> suggests early-stage stress. "
+                f"reflectance. NDVI change: <strong>{ndvi_str}</strong>. "
                 "Schedule a follow-up satellite pass within 7 days.</p>"
             )
         else:
             narrative = (
-                f"A <strong>mild temperature anomaly</strong> occurred at <strong>{sel['site']}</strong> "
-                f"on {sel['date'].strftime('%B %d, %Y')}. Observed LST: <strong>{sel['lst']:.1f}°C</strong> "
+                f"A <strong>warning-level temperature anomaly</strong> occurred at <strong>{sel['site']}</strong> "
+                f"in {sel['date'].strftime('%B %Y')}. Observed LST: <strong>{sel['lst']:.1f}°C</strong> "
                 f"(+{delta_t:.1f}°C, {sel['z_score']:.2f}σ above baseline)."
-                "<p>Mild anomalies are common during dry spells and typically resolve within 3–5 days. "
-                f"The NDVI change of <strong>{sel['ndvi_change']:+.3f}</strong> is within normal seasonal "
-                "variation. Continue monitoring; escalate if sustained over multiple consecutive days.</p>"
+                "<p>Warning anomalies are common during dry spells and typically resolve within one month. "
+                f"NDVI change: <strong>{ndvi_str}</strong>. Continue monitoring; escalate if sustained.</p>"
             )
 
         st.markdown(
@@ -337,7 +388,7 @@ with col_explain:
                 </div>
                 <div class="explain-stat">
                   <div class="es-label">ΔNDVI</div>
-                  <div class="es-value" style="color:#DC2626">{sel["ndvi_change"]:+.3f}</div>
+                  <div class="es-value" style="color:#DC2626">{ndvi_str}</div>
                 </div>
               </div>
               <div style="margin-bottom:14px">
@@ -359,7 +410,6 @@ with col_explain:
 
 st.write("")
 
-# Pick chart site: selected event's site, or site filter, or first available
 if total > 0 and selected_idx is not None:
     chart_site = filtered.iloc[selected_idx]["site"]
 elif site_filter != "All sites":
@@ -369,136 +419,89 @@ else:
 
 section_label(f"LST Time-Series with Anomalies — {chart_site}")
 
-site_ts = (
-    ts_df[ts_df["site"] == chart_site]
-    .sort_values("date")
-    .dropna(subset=["baseline_mean", "baseline_std"])
-)
-site_anom = anom_df[anom_df["site"] == chart_site]
+site_ts = ts_df[ts_df["site"] == chart_site].sort_values("date").copy()
+site_ts["date"] = pd.to_datetime(site_ts["date"])
+site_anom = anom_df[anom_df["site"] == chart_site].copy()
+site_anom["date"] = pd.to_datetime(site_anom["date"])
 
-fig = go.Figure()
-
-# ±2σ band
-fig.add_trace(
-    go.Scatter(
-        x=pd.concat([site_ts["date"], site_ts["date"][::-1]]),
-        y=pd.concat([
-            site_ts["baseline_mean"] + 2 * site_ts["baseline_std"],
-            (site_ts["baseline_mean"] - 2 * site_ts["baseline_std"])[::-1],
-        ]),
-        fill="toself",
-        fillcolor="rgba(46,125,50,0.07)",
-        line={"width": 0},
-        showlegend=True,
-        name="±2σ band",
-        hoverinfo="skip",
-    )
-)
-
-# ±1σ band
-fig.add_trace(
-    go.Scatter(
-        x=pd.concat([site_ts["date"], site_ts["date"][::-1]]),
-        y=pd.concat([
-            site_ts["baseline_mean"] + site_ts["baseline_std"],
-            (site_ts["baseline_mean"] - site_ts["baseline_std"])[::-1],
-        ]),
-        fill="toself",
-        fillcolor="rgba(46,125,50,0.13)",
-        line={"width": 0},
-        showlegend=True,
-        name="±1σ band",
-        hoverinfo="skip",
-    )
-)
-
-# Baseline mean
-fig.add_trace(
-    go.Scatter(
-        x=site_ts["date"],
-        y=site_ts["baseline_mean"],
-        name="Baseline mean",
-        line={"color": "#2E7D32", "width": 1.8, "dash": "dot"},
-        mode="lines",
-    )
-)
-
-# Actual LST
-fig.add_trace(
-    go.Scatter(
-        x=site_ts["date"],
-        y=site_ts["lst"],
-        name="LST",
-        line={"color": "#9CA3AF", "width": 1.8},
-        mode="lines",
-    )
-)
-
-# Anomaly markers per severity
-for sev_name, color in SEV_COLOR.items():
-    pts = site_anom[site_anom["severity"] == sev_name]
-    if pts.empty:
-        continue
-    fig.add_trace(
-        go.Scatter(
-            x=pts["date"],
-            y=pts["lst"],
-            name=sev_name,
-            mode="markers",
-            marker={
-                "color": color,
-                "size": 9,
-                "symbol": "circle",
-                "line": {"color": "#fff", "width": 1.5},
-            },
-            hovertemplate="%{x|%b %d}<br>LST: %{y:.1f}°C<extra>" + sev_name + "</extra>",
-        )
-    )
-
-# Selected event star
+sel_event = None
 if total > 0 and selected_idx is not None:
     ev = filtered.iloc[selected_idx]
     if ev["site"] == chart_site:
-        fig.add_trace(
-            go.Scatter(
-                x=[ev["date"]],
-                y=[ev["lst"]],
-                name="Selected",
-                mode="markers",
-                marker={
-                    "color": "#7C3AED",
-                    "size": 14,
-                    "symbol": "star",
-                    "line": {"color": "#fff", "width": 2},
-                },
-                hovertemplate="%{x|%b %d}<br>LST: %{y:.1f}°C<extra>Selected</extra>",
-            )
-        )
+        sel_event = ev
 
-fig.update_layout(
-    height=380,
-    margin={"t": 20, "b": 20, "l": 0, "r": 0},
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="#FAFAFA",
-    hovermode="x unified",
-    legend={
-        "orientation": "h",
-        "yanchor": "bottom",
-        "y": 1.02,
-        "xanchor": "left",
-        "x": 0,
-    },
-    xaxis={"showgrid": True, "gridcolor": "#F3F4F6", "tickformat": "%b %d", "title": None},
-    yaxis={
-        "showgrid": True,
-        "gridcolor": "#F3F4F6",
-        "title": {"text": "LST (°C)", "font": {"size": 12}},
-    },
-)
-
+fig = anomaly_timeseries_chart(site_ts, site_anom, selected_event=sel_event)
 st.plotly_chart(fig, use_container_width=True)
 st.caption(
-    f"180-day LST record for {chart_site}. "
-    "Coloured markers = detected anomalies (red=Critical, orange=Severe, yellow=Mild). "
-    "★ = currently selected event."
+    f"Monthly LST record for **{chart_site}** (2000–2025). "
+    "Coloured markers = detected anomalies (red=Critical, orange=Severe, yellow=Warning). "
+    "★ = currently selected event. Shaded bands show ±1σ / ±2σ historical range."
+)
+
+# ── Energy-Flow / Heat-Budget Model (DN-A6) ───────────────────────────────────
+
+st.write("")
+section_label(f"Heat-Budget Model — {chart_site}")
+
+from data_nature.models.ecology import EnergyFlow  # noqa: E402
+from data_nature.viz.charts import energy_flow_chart  # noqa: E402
+
+# Derive site-level defaults from the real data
+_site_rows = ts_df[ts_df["site"] == chart_site]
+_site_lst  = float(_site_rows["lst"].mean()) if not _site_rows.empty else 35.0
+
+# Load monthly data (cached) to derive site NDVI
+if "_monthly_df_cache" not in st.session_state:
+    try:
+        _m = pd.read_csv(_PROCESSED / "site_monthly.csv")
+    except Exception:
+        _m = pd.read_csv(_MOCK / "site_monthly.csv")
+    st.session_state["_monthly_df_cache"] = _m
+_monthly_all = st.session_state["_monthly_df_cache"]
+_site_ndvi = float(
+    _monthly_all[_monthly_all["site"] == chart_site]["ndvi"].mean()
+    if chart_site in _monthly_all["site"].values else 0.4
+)
+
+ef_c1, ef_c2, ef_c3, ef_c4 = st.columns([1.5, 1.5, 1.5, 1.5])
+with ef_c1:
+    ef_T0 = st.slider(
+        "Initial surface T (°C)", 20.0, 55.0,
+        value=round(min(max(_site_lst, 20.0), 55.0), 1),
+        step=0.5, key="ef_T0",
+        help="Starting surface temperature for this site (from real data mean).",
+    )
+with ef_c2:
+    ef_ndvi = st.slider(
+        "Current NDVI", 0.05, 0.90,
+        value=round(min(max(_site_ndvi, 0.05), 0.90), 2),
+        step=0.05, key="ef_ndvi",
+        help="Current vegetation index. Higher NDVI → stronger evapotranspirative cooling.",
+    )
+with ef_c3:
+    ef_ndvi_plant = st.slider(
+        "NDVI after planting", 0.05, 0.95,
+        value=round(min(max(_site_ndvi + 0.20, 0.05), 0.95), 2),
+        step=0.05, key="ef_ndvi_plant",
+        help="Projected NDVI after a planting intervention.",
+    )
+with ef_c4:
+    ef_solar = st.slider(
+        "Solar input (W m⁻²)", 200, 700, 450, step=25, key="ef_solar",
+        help="Mean incoming solar irradiance for this region.",
+    )
+
+_ef_kwargs = dict(T0=ef_T0, Q_solar=ef_solar, ndvi=ef_ndvi, T_amb=ef_T0 - 8.0)
+ef_df         = EnergyFlow(**_ef_kwargs).simulate(steps=365)
+ef_df_planted = EnergyFlow(**{**_ef_kwargs, "ndvi": ef_ndvi_plant}).simulate(steps=365)
+
+st.plotly_chart(energy_flow_chart(ef_df, df_planted=ef_df_planted), use_container_width=True)
+
+_delta_T = ef_df["T"].iloc[-1] - ef_df_planted["T"].iloc[-1]
+st.caption(
+    f"Heat-budget model for **{chart_site}**. "
+    f"Equation: dT/dt = [Q_in(t) − k·(1 + β·NDVI)·(T − T_amb)] / C. "
+    f"Dotted line = instantaneous equilibrium temperature. "
+    f"Planting intervention (NDVI {ef_ndvi:.2f} → {ef_ndvi_plant:.2f}) "
+    f"reduces steady-state surface temperature by ≈ **{_delta_T:.1f} °C**."
 )

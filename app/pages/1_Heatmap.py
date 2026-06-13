@@ -13,15 +13,13 @@ for _p in (str(_ROOT / "src"), str(_APP)):
 import os
 
 import ee  # noqa: E402
-import folium  # noqa: E402
-import matplotlib  # noqa: E402
-import matplotlib.colors as mcolors  # noqa: E402
-import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 from streamlit_folium import st_folium  # noqa: E402
 from ui import page_hero, section_label, set_page_config  # noqa: E402
+
+from data_nature.viz.maps import LAYER_CFG, build_site_map, legend_html  # noqa: E402
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -36,17 +34,60 @@ page_hero(
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 
-MOCK = _ROOT / "data" / "mock"
+_PROCESSED = _ROOT / "data" / "processed"
+_MOCK = _ROOT / "data" / "mock"
 
 
-@st.cache_data
-def _load() -> tuple[pd.DataFrame, pd.DataFrame]:
-    monthly = pd.read_csv(MOCK / "site_monthly.csv")
-    locs = pd.read_csv(MOCK / "site_locations.csv")
-    return monthly, locs
+def _compute_zscores(monthly: pd.DataFrame) -> pd.DataFrame:
+    """Fill z_score_lst, z_score_ndvi, delta, is_anomaly using the stats module."""
+    from data_nature.stats import compute_zscores
+
+    # LST z-scores
+    lst_enriched = compute_zscores(monthly)
+    monthly = monthly.copy()
+    monthly["z_score_lst"] = lst_enriched["z_score"]
+
+    # NDVI z-scores (same logic, computed inline)
+    ndvi_stats = (
+        monthly.groupby(["site", "month"])["ndvi"]
+        .agg(ndvi_mean="mean", ndvi_std="std")
+        .reset_index()
+    )
+    monthly = monthly.merge(ndvi_stats, on=["site", "month"], how="left")
+    safe_std = monthly["ndvi_std"].replace(0, float("nan"))
+    monthly["z_score_ndvi"] = ((monthly["ndvi"] - monthly["ndvi_mean"]) / safe_std).round(4)
+    monthly.drop(columns=["ndvi_mean", "ndvi_std"], inplace=True)
+
+    monthly["delta"] = (monthly["z_score_lst"] - monthly["z_score_ndvi"]).round(4)
+    monthly["is_anomaly"] = monthly["z_score_lst"] >= 1.5
+    return monthly
 
 
-monthly_df, locs_df = _load()
+@st.cache_data(show_spinner="Loading site data…")
+def _load() -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+    """
+    Returns (monthly_df, locs_df, using_real_data).
+    Tries data/processed/ first; falls back to data/mock/ on any failure.
+    """
+    try:
+        monthly = pd.read_csv(_PROCESSED / "site_monthly.csv")
+        locs = pd.read_csv(_PROCESSED / "site_locations.csv")
+        if monthly["z_score_lst"].isna().all():
+            monthly = _compute_zscores(monthly)
+        # Ensure is_anomaly is bool
+        monthly["is_anomaly"] = monthly["is_anomaly"].astype(bool)
+        return monthly, locs, True
+    except Exception:
+        pass
+
+    monthly = pd.read_csv(_MOCK / "site_monthly.csv")
+    locs = pd.read_csv(_MOCK / "site_locations.csv")
+    # Mock CSVs store "True"/"False" as strings in some environments
+    monthly["is_anomaly"] = monthly["is_anomaly"].astype(str).str.strip().str.lower() == "true"
+    return monthly, locs, False
+
+
+monthly_df, locs_df, _REAL_DATA = _load()
 SITES = sorted(monthly_df["site"].unique())
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -57,8 +98,6 @@ MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 @st.cache_resource(show_spinner="🛰️ Connecting to Google Earth Engine…")
 def _init_gee() -> bool:
     project = "datanature"
-
-    # 1. Service-account key from Streamlit secrets or env var (deployment path)
     try:
         key_json: str = (
             st.secrets.get("gee", {}).get("key_json")  # type: ignore[union-attr]
@@ -74,8 +113,6 @@ def _init_gee() -> bool:
             return True
     except Exception:
         pass
-
-    # 2. Saved local credentials (~/.config/earthengine/credentials) — local dev
     try:
         ee.Initialize(project=project)
         return True
@@ -97,47 +134,12 @@ for _k, _v in _defaults.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ── Layer configuration ───────────────────────────────────────────────────────
-
-LAYER_CFG: dict[str, dict] = {
-    "LST Day (MOD11A1)": {
-        "col": "lst", "vmin": 20.0, "vmax": 55.0, "unit": "°C",
-        "cmap": "RdYlBu_r",
-        "label": "Land Surface Temperature — Day (°C)",
-        "palette": ["#313695", "#74add1", "#e0f3f8", "#fee090",
-                    "#f46d43", "#d73027", "#a50026"],
-        "yearly": False,
-    },
-    "NDVI (MOD13Q1)": {
-        "col": "ndvi", "vmin": 0.0, "vmax": 0.8, "unit": "",
-        "cmap": "RdYlGn",
-        "label": "Vegetation Index — NDVI",
-        "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b",
-                    "#d9ef8b", "#a6d96a", "#66bd63", "#1a9850"],
-        "yearly": False,
-    },
-    "Land Cover (MOD12Q1)": {
-        "col": "ndvi", "vmin": 0.0, "vmax": 17.0, "unit": "",
-        "cmap": "tab20",
-        "label": "Land Cover Type 1 (IGBP)",
-        "palette": ["1c0dff", "05450a", "086a10", "54a708", "78d203",
-                    "009900", "c6b044", "dcd159", "dade48", "fbff13",
-                    "b6ff05", "27af87", "c24f44", "a5a5a5", "ff6d4c",
-                    "69fff8", "f9ffa4", "1c0dff"],
-        "yearly": True,
-    },
-}
-
 
 # ── GEE tile URL (cached, TTL 1 h) ────────────────────────────────────────────
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _gee_tile_url(layer_name: str, y: int, mo: int) -> str | None:
-    """
-    Fetch a GEE map-tile URL for the given layer + period.
-    Returns None if GEE is unavailable or the collection is empty.
-    """
     if not GEE_OK:
         return None
     try:
@@ -157,10 +159,11 @@ def _gee_tile_url(layer_name: str, y: int, mo: int) -> str | None:
                 .multiply(0.02)
                 .subtract(273.15)
             )
-            vis = {"min": 20, "max": 55,
-                   "palette": ["#313695", "#74add1", "#e0f3f8",
-                                "#fee090", "#f46d43", "#d73027", "#a50026"]}
-
+            vis = {
+                "min": 20, "max": 55,
+                "palette": ["#313695", "#74add1", "#e0f3f8",
+                            "#fee090", "#f46d43", "#d73027", "#a50026"],
+            }
         elif layer_name == "NDVI (MOD13Q1)":
             img = (
                 ee.ImageCollection("MODIS/061/MOD13Q1")
@@ -170,10 +173,11 @@ def _gee_tile_url(layer_name: str, y: int, mo: int) -> str | None:
                 .mean()
                 .multiply(0.0001)
             )
-            vis = {"min": 0, "max": 0.8,
-                   "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b",
-                                "#d9ef8b", "#a6d96a", "#66bd63", "#1a9850"]}
-
+            vis = {
+                "min": 0, "max": 0.8,
+                "palette": ["#d73027", "#f46d43", "#fdae61", "#fee08b",
+                            "#d9ef8b", "#a6d96a", "#66bd63", "#1a9850"],
+            }
         elif layer_name == "Land Cover (MOD12Q1)":
             img = (
                 ee.ImageCollection("MODIS/061/MOD12Q1")
@@ -182,47 +186,20 @@ def _gee_tile_url(layer_name: str, y: int, mo: int) -> str | None:
                 .first()
                 .select("LC_Type1")
             )
-            vis = {"min": 0, "max": 17,
-                   "palette": ["1c0dff", "05450a", "086a10", "54a708", "78d203",
-                                "009900", "c6b044", "dcd159", "dade48", "fbff13",
-                                "b6ff05", "27af87", "c24f44", "a5a5a5", "ff6d4c",
-                                "69fff8", "f9ffa4", "1c0dff"]}
+            vis = {
+                "min": 0, "max": 17,
+                "palette": ["1c0dff", "05450a", "086a10", "54a708", "78d203",
+                            "009900", "c6b044", "dcd159", "dade48", "fbff13",
+                            "b6ff05", "27af87", "c24f44", "a5a5a5", "ff6d4c",
+                            "69fff8", "f9ffa4", "1c0dff"],
+            }
         else:
             return None
 
         map_id = img.clip(region).getMapId(vis)
         return str(map_id["tile_fetcher"].url_format)
-
     except Exception:
         return None
-
-
-# ── Colour helpers ────────────────────────────────────────────────────────────
-
-
-def _hex_color(val: float, vmin: float, vmax: float, cmap_name: str) -> str:
-    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    cmap = matplotlib.colormaps[cmap_name]
-    return mcolors.to_hex(cmap(norm(float(np.clip(val, vmin, vmax)))))
-
-
-def _legend_html(cfg: dict) -> str:
-    palette = cfg["palette"]
-    clean = [c if c.startswith("#") else f"#{c}" for c in palette]
-    gradient = ", ".join(clean)
-    vmin, vmax, unit = cfg["vmin"], cfg["vmax"], cfg["unit"]
-    mid = (vmin + vmax) / 2
-    return (
-        f'<div style="margin:8px 0 18px">'
-        f'<div style="font-size:0.65em;font-weight:700;letter-spacing:0.1em;'
-        f'text-transform:uppercase;color:#6b7280;margin-bottom:5px">{cfg["label"]}</div>'
-        f'<div style="height:14px;border-radius:7px;'
-        f'background:linear-gradient(90deg,{gradient});border:1px solid #e5e7eb"></div>'
-        f'<div style="display:flex;justify-content:space-between;margin-top:3px;'
-        f'font-size:0.68em;color:#6b7280">'
-        f"<span>{vmin:.0f}{unit}</span><span>{mid:.0f}{unit}</span><span>{vmax:.0f}{unit}</span>"
-        f"</div></div>"
-    )
 
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -251,15 +228,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── GEE status banner ─────────────────────────────────────────────────────────
+# ── Status banners ────────────────────────────────────────────────────────────
+
+if not _REAL_DATA:
+    st.info("ℹ️ Showing mock data — place real CSVs in `data/processed/` to use live data.")
 
 if not GEE_OK:
     st.warning(
-        "⚠️ Google Earth Engine is not authenticated — no satellite layer will load. "
+        "⚠️ Google Earth Engine is not authenticated — satellite layer will not load. "
         "Run `earthengine authenticate` in your terminal, then restart the app."
     )
 
-# ── Auto-advance animation (runs before widgets) ──────────────────────────────
+# ── Auto-advance animation ────────────────────────────────────────────────────
 
 if st.session_state["hm_playing"]:
     _m = int(st.session_state["hm_month"]) + 1  # type: ignore[arg-type]
@@ -312,56 +292,10 @@ def _snap(y: int, mo: int) -> pd.DataFrame:
     )
 
 
-def _build_map(
-    snap_df: pd.DataFrame,
-    layer_name: str,
-    layer_cfg: dict,
-    highlight: str,
-    y: int,
-    mo: int,
-) -> folium.Map:
-    fmap = folium.Map(
-        location=[32.78, 35.30],
-        zoom_start=9,
-        tiles="CartoDB positron",
-        control_scale=True,
-    )
-
-    # ── Real GEE MODIS tile layer ─────────────────────────────────────────────
+def _make_map(snap_df: pd.DataFrame, layer_name: str, layer_cfg: dict,
+              highlight: str, y: int, mo: int):
     tile_url = _gee_tile_url(layer_name, y, mo)
-    if tile_url:
-        folium.TileLayer(
-            tiles=tile_url,
-            attr="Google Earth Engine / MODIS / NASA",
-            name=layer_name,
-            opacity=0.88,
-            overlay=True,
-        ).add_to(fmap)
-
-    # ── Site markers (colour-coded by modelled value, hover + click) ──────────
-    for _, row in snap_df.iterrows():
-        val = float(row[layer_cfg["col"]])
-        fill = _hex_color(val, layer_cfg["vmin"], layer_cfg["vmax"], layer_cfg["cmap"])
-        is_hi = highlight != "All" and row["site"] == highlight
-        folium.CircleMarker(
-            location=[row["lat"], row["lng"]],
-            radius=11 if is_hi else 8,
-            color="#FFD700" if is_hi else "#ffffff",
-            weight=3 if is_hi else 2,
-            fill=True,
-            fill_color=fill,
-            fill_opacity=0.92,
-            tooltip=folium.Tooltip(
-                f"<b>{row['site']}</b><br>"
-                f"LST: {row['lst']:.1f}°C &nbsp;·&nbsp; NDVI: {row['ndvi']:.3f}<br>"
-                f"Δ z: {row['delta']:+.2f}σ &nbsp;·&nbsp; "
-                f"{'⚠️ Anomaly' if row['is_anomaly'] else '✅ Normal'}",
-                sticky=True,
-            ),
-            popup=folium.Popup(str(row["site"]), max_width=200),
-        ).add_to(fmap)
-
-    return fmap
+    return build_site_map(snap_df, layer_cfg, highlight, tile_url)
 
 
 # ── Map layout ────────────────────────────────────────────────────────────────
@@ -375,9 +309,8 @@ if not compare_mode:
     with col_map:
         section_label(f"Map — {MONTH_NAMES[month - 1]} {year}")
 
-        # Trigger tile URL fetch while showing spinner inside the column
         with st.spinner("Loading satellite layer…"):
-            fmap = _build_map(snap, layer, cfg, site_sel, year, month)
+            fmap = _make_map(snap, layer, cfg, site_sel, year, month)
 
         result = st_folium(
             fmap,
@@ -388,10 +321,13 @@ if not compare_mode:
         if result and result.get("last_object_clicked"):
             click = result["last_object_clicked"]
             if click and "lat" in click:
-                dists = (locs_df["lat"] - click["lat"]) ** 2 + (locs_df["lng"] - click["lng"]) ** 2
+                dists = (
+                    (locs_df["lat"] - click["lat"]) ** 2
+                    + (locs_df["lng"] - click["lng"]) ** 2
+                )
                 st.session_state["hm_site"] = locs_df.loc[dists.idxmin(), "site"]
 
-        st.markdown(_legend_html(cfg), unsafe_allow_html=True)
+        st.markdown(legend_html(cfg), unsafe_allow_html=True)
 
     with col_detail:
         section_label("Site Detail")
@@ -464,16 +400,16 @@ else:
     with cm1:
         section_label(f"{MONTH_NAMES[m1 - 1]} {y1}")
         with st.spinner("Loading…"):
-            fmap1 = _build_map(snap1, layer, cfg, "All", y1, m1)
+            fmap1 = _make_map(snap1, layer, cfg, "All", y1, m1)
         st_folium(fmap1, height=430, returned_objects=[], key="cmp_map1")
-        st.markdown(_legend_html(cfg), unsafe_allow_html=True)
+        st.markdown(legend_html(cfg), unsafe_allow_html=True)
 
     with cm2:
         section_label(f"{MONTH_NAMES[m2 - 1]} {y2}")
         with st.spinner("Loading…"):
-            fmap2 = _build_map(snap2, layer, cfg, "All", y2, m2)
+            fmap2 = _make_map(snap2, layer, cfg, "All", y2, m2)
         st_folium(fmap2, height=430, returned_objects=[], key="cmp_map2")
-        st.markdown(_legend_html(cfg), unsafe_allow_html=True)
+        st.markdown(legend_html(cfg), unsafe_allow_html=True)
 
 # ── Timeline ──────────────────────────────────────────────────────────────────
 
@@ -527,12 +463,63 @@ fig.update_layout(
     hovermode="x",
     legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0},
     xaxis={"showgrid": True, "gridcolor": "#F3F4F6", "tickformat": "%Y", "title": None},
-    yaxis={"showgrid": True, "gridcolor": "#F3F4F6",
-           "title": {"text": "LST z-score", "font": {"size": 11}}},
+    yaxis={
+        "showgrid": True, "gridcolor": "#F3F4F6",
+        "title": {"text": "LST z-score", "font": {"size": 11}},
+    },
 )
 st.plotly_chart(fig, use_container_width=True)
 st.caption(
     f"Monthly LST z-score for **{tl_site}** (2000–2025). "
     "Red = anomaly months (z ≥ 1.5σ). Green dashed line = current selection. "
     "Click a site marker on the map to change the site shown here."
+)
+
+# ── Logistic Growth — Vegetation Recovery Model (DN-A6) ──────────────────────
+
+st.write("")
+section_label(f"Vegetation Recovery — Logistic Growth Model · {tl_site}")
+
+from data_nature.models.ecology import LogisticGrowth  # noqa: E402
+from data_nature.viz.charts import logistic_growth_chart  # noqa: E402
+
+# Derive P0 from the site's current mean NDVI
+_site_ndvi = float(
+    monthly_df[monthly_df["site"] == tl_site]["ndvi"].mean()
+)
+
+lg_c1, lg_c2, lg_c3, lg_c4 = st.columns([1.5, 1.5, 1.5, 1.5])
+with lg_c1:
+    lg_P0 = st.slider(
+        "Initial cover (P₀)", 0.01, 0.95,
+        value=round(min(_site_ndvi, 0.9), 2),
+        step=0.01, key="lg_P0",
+        help="Starting vegetation density (NDVI proxy for this site).",
+    )
+with lg_c2:
+    lg_r = st.slider(
+        "Growth rate (r)", 0.05, 2.0, 0.4, step=0.05, key="lg_r",
+        help="Intrinsic vegetation growth rate.",
+    )
+with lg_c3:
+    lg_K = st.slider(
+        "Carrying capacity (K)", 0.3, 1.0, 0.85, step=0.05, key="lg_K",
+        help="Maximum sustainable vegetation cover for this land type.",
+    )
+with lg_c4:
+    lg_years = st.slider(
+        "Simulation years", 5, 50, 20, step=5, key="lg_years",
+    )
+
+lg_steps = lg_years * 10
+lg_df = LogisticGrowth(P0=lg_P0, r=lg_r, K=lg_K).simulate(steps=lg_steps, dt=0.1)
+lg_df["t"] = lg_df["t"] / 10  # convert to years
+
+st.plotly_chart(logistic_growth_chart(lg_df, K=lg_K), use_container_width=True)
+st.caption(
+    f"Logistic growth model for **{tl_site}**. "
+    f"Equation: dP/dt = r·P·(1 − P/K). "
+    f"Initial cover P₀ = {lg_P0:.2f} (site mean NDVI). "
+    "The curve saturates at carrying capacity K — the maximum vegetation density "
+    "sustainable under local climate and land-use conditions."
 )
