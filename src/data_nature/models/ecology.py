@@ -34,7 +34,7 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------------
-# 1. Lotka-Volterra competition model  (DN-B5, Alaa Barazi)
+# 1. Lotka-Volterra competition model  (DN-B5)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -53,6 +53,31 @@ class LotkaVolterra:
         K_n, K_i    — carrying capacities
         α           — competition effect of invasive on native
         β           — competition effect of native on invasive
+
+    Parameters
+    ----------
+    N0 : float
+        Initial native vegetation density (default 0.8).
+    I0 : float
+        Initial invasive vegetation density (default 0.2).
+    r_native : float
+        Intrinsic growth rate of native vegetation (default 0.3).
+    r_invasive : float
+        Intrinsic growth rate of invasive vegetation (default 0.5).
+    K_native : float
+        Carrying capacity for native vegetation (default 1.0).
+    K_invasive : float
+        Carrying capacity for invasive vegetation (default 1.0).
+    alpha : float
+        Competition coefficient: effect of invasive on native (default 1.2).
+    beta : float
+        Competition coefficient: effect of native on invasive (default 0.8).
+
+    Examples
+    --------
+    >>> lv = LotkaVolterra(N0=0.8, I0=0.2)
+    >>> df = simulate_lv(lv, steps=200, dt=0.1)
+    >>> df[["t", "native", "invasive"]].tail()
     """
 
     N0:          float = 0.8
@@ -61,16 +86,28 @@ class LotkaVolterra:
     r_invasive:  float = 0.50
     K_native:    float = 1.0
     K_invasive:  float = 1.0
-    alpha:       float = 1.2
-    beta:        float = 0.8
+    alpha:       float = 1.2   # invasive → native competition
+    beta:        float = 0.8   # native   → invasive competition
 
     def _derivatives(self, N: float, I: float) -> tuple[float, float]:
+        """Compute dN/dt and dI/dt."""
         dN = self.r_native   * N * (1 - (N + self.alpha * I) / self.K_native)
         dI = self.r_invasive * I * (1 - (I + self.beta  * N) / self.K_invasive)
         return dN, dI
 
-    def simulate(self, steps: int = 200, dt: float = 0.1) -> pd.DataFrame:
+    def simulate(
+        self,
+        steps: int = 200,
+        dt:    float = 0.1,
+    ) -> pd.DataFrame:
         """Integrate the LV system using 4th-order Runge-Kutta.
+
+        Parameters
+        ----------
+        steps : int
+            Number of time steps.
+        dt : float
+            Time step size.
 
         Returns
         -------
@@ -79,16 +116,19 @@ class LotkaVolterra:
         t_vals = np.zeros(steps + 1)
         N_vals = np.zeros(steps + 1)
         I_vals = np.zeros(steps + 1)
+
         N, I = self.N0, self.I0
-        N_vals[0], I_vals[0] = N, I
+        N_vals[0], I_vals[0], t_vals[0] = N, I, 0.0
 
         for k in range(steps):
             k1N, k1I = self._derivatives(N, I)
             k2N, k2I = self._derivatives(N + dt/2 * k1N, I + dt/2 * k1I)
             k3N, k3I = self._derivatives(N + dt/2 * k2N, I + dt/2 * k2I)
             k4N, k4I = self._derivatives(N + dt    * k3N, I + dt    * k3I)
+
             N = max(0.0, N + dt/6 * (k1N + 2*k2N + 2*k3N + k4N))
             I = max(0.0, I + dt/6 * (k1I + 2*k2I + 2*k3I + k4I))
+
             t_vals[k+1] = (k+1) * dt
             N_vals[k+1] = N
             I_vals[k+1] = I
@@ -97,12 +137,27 @@ class LotkaVolterra:
 
 
 def simulate_lv(
-    model: LotkaVolterra | None = None,
-    steps: int = 200,
-    dt: float = 0.1,
+    model:  LotkaVolterra | None = None,
+    steps:  int   = 200,
+    dt:     float = 0.1,
     **kwargs,
 ) -> pd.DataFrame:
-    """Run a Lotka-Volterra simulation and return a trajectory DataFrame."""
+    """Run a Lotka-Volterra simulation and return a trajectory DataFrame.
+
+    Parameters
+    ----------
+    model : LotkaVolterra, optional
+        Pre-configured model.  If None, a default model is created using
+        any extra keyword arguments.
+    steps, dt
+        Passed to model.simulate().
+    **kwargs
+        Forwarded to LotkaVolterra() if model is None.
+
+    Returns
+    -------
+    pd.DataFrame with columns: t, native, invasive
+    """
     if model is None:
         model = LotkaVolterra(**kwargs)
     return model.simulate(steps=steps, dt=dt)
@@ -114,24 +169,37 @@ def simulate_lv(
 
 @dataclass
 class LogisticGrowth:
-    """Single-population logistic growth model for vegetation cover dynamics.
+    """Single-population logistic growth model.
 
-    Governing equation (continuous, integrated with RK4):
+    Governing equation
+    ------------------
         dP/dt = r * P * (1 - P / K)
 
-    where:
-        P — vegetation cover or density (e.g. NDVI proxy)
-        r — intrinsic growth rate
-        K — carrying capacity (maximum sustainable cover)
+    Parameters
+    ----------
+    P0 : float
+        Initial population density (default 0.1).
+    r : float
+        Intrinsic growth rate (default 0.4).
+    K : float
+        Carrying capacity (default 1.0).
 
-    The curve is S-shaped: slow initial growth, rapid expansion, saturation at K.
+    Examples
+    --------
+    >>> lg = LogisticGrowth(P0=0.05, r=0.5, K=1.0)
+    >>> df = simulate_logistic(lg, steps=100, dt=0.1)
+    >>> assert df["population"].iloc[-1] > 0.95 * lg.K
     """
 
     P0: float = 0.1
     r:  float = 0.4
     K:  float = 1.0
 
-    def simulate(self, steps: int = 100, dt: float = 0.1) -> pd.DataFrame:
+    def simulate(
+        self,
+        steps: int   = 100,
+        dt:    float = 0.1,
+    ) -> pd.DataFrame:
         """Integrate logistic growth using RK4.
 
         Returns
@@ -140,6 +208,7 @@ class LogisticGrowth:
         """
         t_vals = np.zeros(steps + 1)
         P_vals = np.zeros(steps + 1)
+
         P = self.P0
         P_vals[0] = P
 
@@ -151,6 +220,7 @@ class LogisticGrowth:
             k2 = _dP(P + dt/2 * k1)
             k3 = _dP(P + dt/2 * k2)
             k4 = _dP(P + dt    * k3)
+
             P = max(0.0, P + dt/6 * (k1 + 2*k2 + 2*k3 + k4))
             t_vals[k+1] = (k+1) * dt
             P_vals[k+1] = P
@@ -160,18 +230,30 @@ class LogisticGrowth:
 
 def simulate_logistic(
     model: LogisticGrowth | None = None,
-    steps: int = 100,
-    dt: float = 0.1,
+    steps: int   = 100,
+    dt:    float = 0.1,
     **kwargs,
 ) -> pd.DataFrame:
-    """Run a logistic-growth simulation and return a trajectory DataFrame."""
+    """Run a logistic-growth simulation and return a trajectory DataFrame.
+
+    Parameters
+    ----------
+    model : LogisticGrowth, optional
+        Pre-configured model.  If None, a default model is created.
+    **kwargs
+        Forwarded to LogisticGrowth() if model is None.
+
+    Returns
+    -------
+    pd.DataFrame with columns: t, population
+    """
     if model is None:
         model = LogisticGrowth(**kwargs)
     return model.simulate(steps=steps, dt=dt)
 
 
 # ---------------------------------------------------------------------------
-# 3. Energy-flow / heat-budget model  (DN-A6, Ahmad Tawil)
+# 3. Energy-flow / heat-budget model  (DN-A6)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -243,11 +325,7 @@ class EnergyFlow:
 
         Returns
         -------
-        pd.DataFrame with columns:
-            t         — time (days)
-            T         — surface temperature (°C)
-            T_eq      — instantaneous equilibrium temperature (°C)
-            Q_in      — incoming radiation after albedo (W m⁻²)
+        pd.DataFrame with columns: t, T, T_eq, Q_in
         """
         t_vals   = np.zeros(steps + 1)
         T_vals   = np.zeros(steps + 1)
