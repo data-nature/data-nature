@@ -15,7 +15,7 @@ from data_nature import __version__
 set_page_config()
 
 # ── Data paths ────────────────────────────────────────────────────────────────
-_DATA = pathlib.Path(__file__).parent.parent / "data" / "mock"
+_DATA = pathlib.Path(__file__).parent.parent / "data" / "processed"
 
 
 @st.cache_data(show_spinner=False)
