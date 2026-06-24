@@ -20,6 +20,9 @@ from ui import page_hero, section_label, set_page_config  # noqa: E402
 from data_nature.viz.charts import (  # noqa: E402
     SEV_BG, SEV_COLOR, STATUS_COLOR, anomaly_timeseries_chart,
 )
+from data_nature.stats.anomaly import (  # noqa: E402
+    BASELINE_START, BASELINE_END, _classify_severity, DEFAULT_THRESHOLDS,
+)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -123,8 +126,6 @@ def _fetch_live_months(missing_months: tuple[tuple[int, int], ...]) -> tuple[pd.
     at all 8 sites, compute z-scores against the 2000-2015 baseline, and
     return new ts rows and any anomalies found.
     """
-    from data_nature.stats.anomaly import BASELINE_START, BASELINE_END, _classify_severity, DEFAULT_THRESHOLDS
-
     locs = pd.read_csv(_PROCESSED / "site_locations.csv")
     monthly_hist = pd.read_csv(_PROCESSED / "site_monthly.csv")
 
