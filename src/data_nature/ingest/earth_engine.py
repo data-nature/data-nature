@@ -44,15 +44,47 @@ class EEAuthError(RuntimeError):
 # ── authentication ────────────────────────────────────────────────────────────
 
 
+def _init_from_streamlit_secrets() -> bool:
+    """
+    Try to initialise Earth Engine from Streamlit secrets (``[gee]`` section).
+
+    Returns True on success, False if secrets are absent or Streamlit is not
+    the current runtime.  Never raises — failures are logged as warnings.
+    """
+    import json
+
+    try:
+        import streamlit as st
+        gee = st.secrets.get("gee", {})
+        key_json_str = gee.get("key_json")
+        sa_email = gee.get("service_account")
+        if not (key_json_str and sa_email):
+            return False
+        from google.oauth2 import service_account as _gsa
+        info = json.loads(key_json_str)
+        creds = _gsa.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/earthengine"],
+        )
+        ee.Initialize(creds, project=info.get("project_id"))
+        log.info("Earth Engine initialised via Streamlit secrets (%s).", sa_email)
+        return True
+    except Exception as exc:
+        log.warning("Streamlit-secrets GEE init skipped: %s", exc)
+        return False
+
+
 def authenticate() -> None:
     """
     Authenticate and initialise Google Earth Engine.
 
     Resolution order:
-    1. Service-account credentials from environment variables
+    1. Streamlit secrets — ``[gee]`` section with ``service_account`` and
+       ``key_json`` fields (used on Streamlit Cloud).
+    2. Service-account credentials from environment variables
        ``GEE_SERVICE_ACCOUNT_EMAIL``, ``GEE_PRIVATE_KEY_PATH``, ``GEE_PROJECT_ID``.
-    2. Interactive OAuth2 browser flow (``ee.Authenticate()``), suitable for
-       local development when the env vars are absent.
+    3. Cached OAuth2 credentials from a prior ``earthengine authenticate`` run,
+       suitable for local development.
 
     Calling this function a second time is a no-op if initialisation already
     succeeded in the current process.
@@ -67,6 +99,12 @@ def authenticate() -> None:
     if _EE_INITIALIZED:
         return
 
+    # 1. Streamlit Cloud secrets
+    if _init_from_streamlit_secrets():
+        _EE_INITIALIZED = True
+        return
+
+    # 2. Env-var service account (local / CI)
     load_dotenv()
     sa_email = os.getenv("GEE_SERVICE_ACCOUNT_EMAIL")
     key_path = os.getenv("GEE_PRIVATE_KEY_PATH")
@@ -82,8 +120,7 @@ def authenticate() -> None:
             ee.Initialize(credentials, project=project)
             log.info("Earth Engine initialised via service account (%s).", sa_email)
         else:
-            # Try cached credentials first (~/.config/earthengine/credentials).
-            # Only fall back to interactive auth if that fails.
+            # 3. Cached OAuth2 credentials (~/.config/earthengine/credentials).
             try:
                 ee.Initialize(project=project)
                 log.info("Earth Engine initialised via cached credentials.")
