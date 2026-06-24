@@ -1,5 +1,10 @@
 from .anomaly import BASELINE_END, BASELINE_START, DEFAULT_THRESHOLDS, compute_zscores, detect_anomalies
-from .regression import compare_site_types, fit_ndvi_lst
+
+try:
+    from .regression import compare_site_types, fit_ndvi_lst
+    _REGRESSION_AVAILABLE = True
+except ImportError:
+    _REGRESSION_AVAILABLE = False
 
 __all__ = [
     "compute_zscores",
