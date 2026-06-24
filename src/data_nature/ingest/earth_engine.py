@@ -72,8 +72,12 @@ def authenticate() -> None:
     key_path = os.getenv("GEE_PRIVATE_KEY_PATH")
     project = os.getenv("GEE_PROJECT_ID") or None
 
+    _placeholder_email = sa_email and sa_email.startswith("your-")
+    _key_file_exists = key_path and Path(key_path).exists()
+    _use_service_account = sa_email and key_path and not _placeholder_email and _key_file_exists
+
     try:
-        if sa_email and key_path:
+        if _use_service_account:
             credentials = ee.ServiceAccountCredentials(sa_email, key_path)
             ee.Initialize(credentials, project=project)
             log.info("Earth Engine initialised via service account (%s).", sa_email)
