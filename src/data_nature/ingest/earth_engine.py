@@ -55,22 +55,17 @@ def _init_from_streamlit_secrets() -> bool:
 
     try:
         import streamlit as st
-        gee = st.secrets.get("gee", {})
-        key_json_str = gee.get("key_json")
-        sa_email = gee.get("service_account")
-        if not (key_json_str and sa_email):
+        if "gee" not in st.secrets:
             return False
-        from google.oauth2 import service_account as _gsa
-        info = json.loads(key_json_str)
-        creds = _gsa.Credentials.from_service_account_info(
-            info,
-            scopes=["https://www.googleapis.com/auth/earthengine"],
-        )
-        ee.Initialize(creds, project=info.get("project_id"))
+        key_json_str = st.secrets["gee"]["key_json"]
+        sa_email = st.secrets["gee"]["service_account"]
+        project = json.loads(key_json_str).get("project_id") or None
+        credentials = ee.ServiceAccountCredentials(sa_email, key_data=key_json_str)
+        ee.Initialize(credentials, project=project)
         log.info("Earth Engine initialised via Streamlit secrets (%s).", sa_email)
         return True
     except Exception as exc:
-        log.warning("Streamlit-secrets GEE init skipped: %s", exc)
+        log.warning("Streamlit-secrets GEE init failed: %s", exc, exc_info=True)
         return False
 
 
