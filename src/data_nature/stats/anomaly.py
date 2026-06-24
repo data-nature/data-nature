@@ -38,33 +38,45 @@ def _classify_severity(
 # ── public API ────────────────────────────────────────────────────────────────
 
 
-def compute_zscores(df: pd.DataFrame) -> pd.DataFrame:
+BASELINE_START = 2010
+BASELINE_END = 2023
+
+
+def compute_zscores(
+    df: pd.DataFrame,
+    baseline_start: int = BASELINE_START,
+    baseline_end: int = BASELINE_END,
+) -> pd.DataFrame:
     """
     Add per-site, per-month historical baseline and z-score columns to *df*.
 
-    For each (site, month) group the baseline is the mean and standard
-    deviation of LST across all years present in the input.  The z-score
-    measures how many standard deviations a given observation sits above
-    (positive) or below (negative) that baseline.
+    The baseline mean and std are computed only from the fixed reference
+    period [baseline_start, baseline_end] (inclusive). Every observation —
+    including years outside that window — is then scored against this fixed
+    norm, so recent warming shows up as a genuine positive anomaly rather
+    than being absorbed into a shifting mean.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Must contain columns: ``site``, ``month``, ``lst``.
+        Must contain columns: ``site``, ``month``, ``year``, ``lst``.
+    baseline_start, baseline_end : int
+        Reference period. Defaults: 2000–2015.
 
     Returns
     -------
     pd.DataFrame
         Original df with three added columns:
 
-        - ``baseline``     — historical mean LST for that (site, month)
-        - ``baseline_std`` — historical std LST for that (site, month)
+        - ``baseline``     — reference-period mean LST for that (site, month)
+        - ``baseline_std`` — reference-period std LST for that (site, month)
         - ``z_score``      — ``(lst − baseline) / baseline_std``
 
         Rows where ``baseline_std`` is zero or NaN yield ``z_score = NaN``.
     """
+    ref = df[(df["year"] >= baseline_start) & (df["year"] <= baseline_end)]
     stats = (
-        df.groupby(["site", "month"])["lst"]
+        ref.groupby(["site", "month"])["lst"]
         .agg(baseline="mean", baseline_std="std")
         .reset_index()
     )
@@ -116,11 +128,16 @@ def detect_anomalies(
         df = compute_zscores(df)
 
     enriched = df.copy().sort_values(["site", "date"]).reset_index(drop=True)
+    import datetime as _dt
+    _current_year = _dt.date.today().year
+
     enriched["severity"] = enriched["z_score"].apply(
         lambda z: _classify_severity(z, thresholds) if pd.notna(z) else None
     )
     enriched["ndvi_change"] = enriched.groupby("site")["ndvi"].diff().round(4)
-    enriched["status"] = "New"
+    enriched["status"] = enriched["year"].apply(
+        lambda y: "New" if int(y) >= _current_year else "Reviewed"
+    )
 
     anomalies = enriched.loc[enriched["severity"].notna()].copy()
 

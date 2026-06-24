@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -10,6 +9,7 @@ for _p in (str(_ROOT / "src"), str(_APP)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import datetime as _dt
 import os
 
 import ee  # noqa: E402
@@ -23,12 +23,14 @@ from data_nature.viz.maps import LAYER_CFG, build_site_map, legend_html  # noqa:
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
+_today = _dt.date.today()
+
 set_page_config(title="Heat Map")
 
 page_hero(
     title="🗺️ Interactive Heat Map",
-    subtitle="Real-time MODIS satellite imagery via Google Earth Engine — LST (MOD11A1), NDVI (MOD13Q1), and Land Cover (MOD12Q1) across Northern Israel, 2000–2025.",
-    pills=["🛰️ Google Earth Engine", "🌡️ MOD11A1 LST", "🌿 MOD13Q1 NDVI", "🗂️ MOD12Q1 Land Cover", "📅 2000–2025"],
+    subtitle=f"Real-time MODIS satellite imagery via Google Earth Engine — LST (MOD11A1), NDVI (MOD13Q1), and Land Cover (MOD12Q1) across Northern Israel, 2000–{_today.year}.",
+    pills=["🛰️ Google Earth Engine", "🌡️ MOD11A1 LST", "🌿 MOD13Q1 NDVI", "🗂️ MOD12Q1 Land Cover", f"📅 2000–{_today.year}"],
     emoji="🗺️",
 )
 
@@ -126,9 +128,7 @@ GEE_OK: bool = _init_gee()
 
 _defaults: dict[str, object] = {
     "hm_year": 2025, "hm_month": 7,
-    "hm_playing": False, "hm_compare": False,
     "hm_site": SITES[0],
-    "hm_year2": 2010, "hm_month2": 7,
 }
 for _k, _v in _defaults.items():
     if _k not in st.session_state:
@@ -239,57 +239,110 @@ if not GEE_OK:
         "Run `earthengine authenticate` in your terminal, then restart the app."
     )
 
-# ── Auto-advance animation ────────────────────────────────────────────────────
-
-if st.session_state["hm_playing"]:
-    _m = int(st.session_state["hm_month"]) + 1  # type: ignore[arg-type]
-    _y = int(st.session_state["hm_year"])  # type: ignore[arg-type]
-    if _m > 12:
-        _m = 1
-        _y += 1
-    if _y > 2025:
-        st.session_state["hm_playing"] = False
-    else:
-        st.session_state["hm_month"] = _m
-        st.session_state["hm_year"] = _y
-        time.sleep(0.6)
-        st.rerun()
-
 # ── Controls ──────────────────────────────────────────────────────────────────
 
 section_label("Controls")
 
-c1, c2, c3, c4, c5, c6 = st.columns([1.8, 2, 1.4, 2, 1, 1])
+_max_year = _today.year
+_max_month = _today.month
+
+# Clamp session state so a previously saved future date doesn't persist
+if st.session_state["hm_year"] > _max_year:
+    st.session_state["hm_year"] = _max_year
+if st.session_state["hm_year"] == _max_year and st.session_state["hm_month"] > _max_month:
+    st.session_state["hm_month"] = _max_month
+
+c1, c2, c3, c4 = st.columns([1.8, 2, 1.4, 2])
 with c1:
     layer: str = st.selectbox("MODIS Layer", list(LAYER_CFG.keys()))
 with c2:
-    year: int = st.slider("Year", 2000, 2025, key="hm_year")
+    year: int = st.slider("Year", 2000, _max_year, key="hm_year")
 with c3:
-    month: int = st.slider("Month", 1, 12, key="hm_month", help="1 = Jan … 12 = Dec")
+    _month_max = _max_month if year == _max_year else 12
+    month: int = st.slider("Month", 1, _month_max, key="hm_month", help="1 = Jan … 12 = Dec")
 with c4:
     site_sel: str = st.selectbox("Highlight site", ["All"] + list(SITES))
-with c5:
-    st.write("")
-    play_lbl = "⏹ Stop" if st.session_state["hm_playing"] else "▶ Play"
-    if st.button(play_lbl, use_container_width=True):
-        st.session_state["hm_playing"] = not st.session_state["hm_playing"]
-        st.rerun()
-with c6:
-    st.write("")
-    cmp_lbl = "❌ Single" if st.session_state["hm_compare"] else "⧉ Compare"
-    if st.button(cmp_lbl, use_container_width=True):
-        st.session_state["hm_compare"] = not st.session_state["hm_compare"]
-        st.rerun()
+    if site_sel != "All":
+        st.session_state["hm_site"] = site_sel
 
 cfg = LAYER_CFG[layer]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+@st.cache_data(ttl=3600, show_spinner="Fetching live MODIS data from GEE…")
+def _fetch_gee_site_data(y: int, mo: int) -> pd.DataFrame | None:
+    """Sample LST + NDVI from GEE at the 8 site locations for a given month."""
+    if not GEE_OK:
+        return None
+    try:
+        end_mo = mo % 12 + 1
+        end_y = y + (1 if mo == 12 else 0)
+        start = f"{y}-{mo:02d}-01"
+        end = f"{end_y}-{end_mo:02d}-01"
+
+        lst_img = (
+            ee.ImageCollection("MODIS/061/MOD11A1")
+            .filterDate(start, end)
+            .select("LST_Day_1km")
+            .mean()
+            .multiply(0.02)
+            .subtract(273.15)
+        )
+
+        # MOD13Q1 is a 16-day composite with higher latency — fall back to
+        # the most recent available image when the current month has none
+        ndvi_col = ee.ImageCollection("MODIS/061/MOD13Q1").filterDate(start, end).select("NDVI")
+        if ndvi_col.size().getInfo() == 0:
+            ndvi_col = ee.ImageCollection("MODIS/061/MOD13Q1").select("NDVI").sort("system:time_start", False).limit(1)
+        ndvi_img = ndvi_col.mean().multiply(0.0001)
+
+        rows = []
+        for _, loc in locs_df.iterrows():
+            pt = ee.Geometry.Point([loc["lng"], loc["lat"]])
+            lst_val = lst_img.sample(pt, scale=1000).first().get("LST_Day_1km").getInfo()
+            ndvi_val = ndvi_img.sample(pt, scale=250).first().get("NDVI").getInfo()
+            rows.append({
+                "year": y, "month": mo,
+                "site": loc["site"],
+                "lst": round(float(lst_val), 4) if lst_val is not None else None,
+                "ndvi": round(float(ndvi_val), 4) if ndvi_val is not None else None,
+            })
+
+        df = pd.DataFrame(rows)
+
+        # z-scores against historical baselines
+        lst_base = (
+            monthly_df.groupby(["site", "month"])["lst"]
+            .agg(baseline_mean="mean", baseline_std="std")
+            .reset_index()
+        )
+        ndvi_base = (
+            monthly_df.groupby(["site", "month"])["ndvi"]
+            .agg(ndvi_mean="mean", ndvi_std="std")
+            .reset_index()
+        )
+        df = df.merge(lst_base, on=["site", "month"], how="left")
+        df = df.merge(ndvi_base, on=["site", "month"], how="left")
+        df["z_score_lst"] = ((df["lst"] - df["baseline_mean"]) / df["baseline_std"].replace(0, float("nan"))).round(4)
+        df["z_score_ndvi"] = ((df["ndvi"] - df["ndvi_mean"]) / df["ndvi_std"].replace(0, float("nan"))).round(4)
+        df["delta"] = (df["z_score_lst"] - df["z_score_ndvi"]).round(4)
+        df["is_anomaly"] = df["z_score_lst"] >= 1.5
+        df.drop(columns=["baseline_mean", "baseline_std", "ndvi_mean", "ndvi_std"], inplace=True)
+        return df
+    except Exception:
+        return None
+
+
 def _snap(y: int, mo: int) -> pd.DataFrame:
-    return monthly_df[(monthly_df["year"] == y) & (monthly_df["month"] == mo)].merge(
-        locs_df, on="site"
-    )
+    result = monthly_df[(monthly_df["year"] == y) & (monthly_df["month"] == mo)]
+    if not result.empty:
+        return result.merge(locs_df, on="site")
+    # Not in CSV — fetch live from GEE
+    live = _fetch_gee_site_data(y, mo)
+    if live is not None and not live.empty:
+        return live.merge(locs_df, on="site")
+    return pd.DataFrame()
 
 
 def _make_map(snap_df: pd.DataFrame, layer_name: str, layer_cfg: dict,
@@ -300,116 +353,93 @@ def _make_map(snap_df: pd.DataFrame, layer_name: str, layer_cfg: dict,
 
 # ── Map layout ────────────────────────────────────────────────────────────────
 
-compare_mode: bool = bool(st.session_state["hm_compare"])
+_in_csv = not monthly_df[(monthly_df["year"] == year) & (monthly_df["month"] == month)].empty
+snap = _snap(year, month)
+if snap.empty:
+    st.warning(f"⚠️ No data available for {MONTH_NAMES[month - 1]} {year} — GEE returned no results.")
+    st.stop()
+if not _in_csv:
+    st.info("🛰️ Showing live data fetched from Google Earth Engine. LST is current month; NDVI uses the most recent available composite.")
 
-if not compare_mode:
-    snap = _snap(year, month)
-    col_map, col_detail = st.columns([3, 1], gap="medium")
+col_map, col_detail = st.columns([3, 1], gap="medium")
 
-    with col_map:
-        section_label(f"Map — {MONTH_NAMES[month - 1]} {year}")
+with col_map:
+    section_label(f"Map — {MONTH_NAMES[month - 1]} {year}")
 
-        with st.spinner("Loading satellite layer…"):
-            fmap = _make_map(snap, layer, cfg, site_sel, year, month)
+    with st.spinner("Loading satellite layer…"):
+        fmap = _make_map(snap, layer, cfg, site_sel, year, month)
 
-        result = st_folium(
-            fmap,
-            height=460,
-            returned_objects=["last_object_clicked"],
-            key="main_map",
-        )
-        if result and result.get("last_object_clicked"):
-            click = result["last_object_clicked"]
-            if click and "lat" in click:
-                dists = (
-                    (locs_df["lat"] - click["lat"]) ** 2
-                    + (locs_df["lng"] - click["lng"]) ** 2
-                )
-                st.session_state["hm_site"] = locs_df.loc[dists.idxmin(), "site"]
+    result = st_folium(
+        fmap,
+        height=460,
+        returned_objects=["last_object_clicked"],
+        key="main_map",
+    )
+    if result and result.get("last_object_clicked"):
+        click = result["last_object_clicked"]
+        if click and "lat" in click:
+            dists = (
+                (locs_df["lat"] - click["lat"]) ** 2
+                + (locs_df["lng"] - click["lng"]) ** 2
+            )
+            st.session_state["hm_site"] = locs_df.loc[dists.idxmin(), "site"]
 
-        st.markdown(legend_html(cfg), unsafe_allow_html=True)
+    st.markdown(legend_html(cfg), unsafe_allow_html=True)
 
-    with col_detail:
-        section_label("Site Detail")
-        sel_site: str = str(st.session_state["hm_site"])
-        sel_rows = snap[snap["site"] == sel_site]
-        if sel_rows.empty:
-            sel_rows = snap.iloc[[0]]
-            sel_site = str(sel_rows.iloc[0]["site"])
+with col_detail:
+    sel_site: str = str(st.session_state["hm_site"])
+    sel_rows = snap[snap["site"] == sel_site]
+    if sel_rows.empty:
+        sel_rows = snap.iloc[[0]]
+        sel_site = str(sel_rows.iloc[0]["site"])
+    section_label(f"Site Detail — {sel_site.replace('_', ' ')}")
 
-        r = sel_rows.iloc[0]
-        lc = locs_df[locs_df["site"] == sel_site].iloc[0]
-        is_anom = bool(r["is_anomaly"])
-        anom_pill = (
-            '<span class="anom-pill" style="background:#FEE2E2;color:#DC2626">⚠️ Anomaly</span>'
-            if is_anom
-            else '<span class="anom-pill" style="background:#DCFCE7;color:#166534">✅ Normal</span>'
-        )
+    r = sel_rows.iloc[0]
+    lc = locs_df[locs_df["site"] == sel_site].iloc[0]
+    is_anom = bool(r["is_anomaly"])
+    anom_pill = (
+        '<span class="anom-pill" style="background:#FEE2E2;color:#DC2626">⚠️ Anomaly</span>'
+        if is_anom
+        else '<span class="anom-pill" style="background:#DCFCE7;color:#166534">✅ Normal</span>'
+    )
 
-        st.markdown(
-            f"""
-            <div class="detail-card">
-              <div class="detail-site">📍 {sel_site}</div>
-              {anom_pill}
-              <div class="detail-row">
-                <span class="detail-key">Land cover</span>
-                <span class="detail-val">{lc["land_cover"]}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">LST</span>
-                <span class="detail-val">{r["lst"]:.1f} °C</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">NDVI</span>
-                <span class="detail-val">{r["ndvi"]:.3f}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">LST z-score</span>
-                <span class="detail-val">{r["z_score_lst"]:+.2f} σ</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">NDVI z-score</span>
-                <span class="detail-val">{r["z_score_ndvi"]:+.2f} σ</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">Δ (LST − NDVI)</span>
-                <span class="detail-val">{r["delta"]:+.2f} σ</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">Period</span>
-                <span class="detail-val">{MONTH_NAMES[month - 1]} {year}</span>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-else:
-    # ── Before / After compare mode ───────────────────────────────────────────
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        y1: int = st.slider("Year (left)",  2000, 2025, key="hm_year2")
-        m1: int = st.slider("Month (left)", 1,    12,   key="hm_month2")
-    with cc2:
-        st.info(f"**Right:** {MONTH_NAMES[month - 1]} {year}  ·  use main sliders above")
-        y2, m2 = year, month
-
-    snap1, snap2 = _snap(y1, m1), _snap(y2, m2)
-    cm1, cm2 = st.columns(2, gap="medium")
-
-    with cm1:
-        section_label(f"{MONTH_NAMES[m1 - 1]} {y1}")
-        with st.spinner("Loading…"):
-            fmap1 = _make_map(snap1, layer, cfg, "All", y1, m1)
-        st_folium(fmap1, height=430, returned_objects=[], key="cmp_map1")
-        st.markdown(legend_html(cfg), unsafe_allow_html=True)
-
-    with cm2:
-        section_label(f"{MONTH_NAMES[m2 - 1]} {y2}")
-        with st.spinner("Loading…"):
-            fmap2 = _make_map(snap2, layer, cfg, "All", y2, m2)
-        st_folium(fmap2, height=430, returned_objects=[], key="cmp_map2")
-        st.markdown(legend_html(cfg), unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="detail-card">
+          <div class="detail-site">📍 {sel_site}</div>
+          {anom_pill}
+          <div class="detail-row">
+            <span class="detail-key">Land cover</span>
+            <span class="detail-val">{lc["land_cover"]}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-key">LST</span>
+            <span class="detail-val">{r["lst"]:.1f} °C</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-key">NDVI</span>
+            <span class="detail-val">{r["ndvi"]:.3f}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-key">LST z-score</span>
+            <span class="detail-val">{r["z_score_lst"]:+.2f} σ</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-key">NDVI z-score</span>
+            <span class="detail-val">{r["z_score_ndvi"]:+.2f} σ</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-key">Δ (LST − NDVI)</span>
+            <span class="detail-val">{r["delta"]:+.2f} σ</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-key">Period</span>
+            <span class="detail-val">{MONTH_NAMES[month - 1]} {year}</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ── Timeline ──────────────────────────────────────────────────────────────────
 
@@ -470,56 +500,10 @@ fig.update_layout(
 )
 st.plotly_chart(fig, use_container_width=True)
 st.caption(
-    f"Monthly LST z-score for **{tl_site}** (2000–2025). "
+    f"Monthly LST z-score for **{tl_site}** (2000–{_today.year}). "
     "Red = anomaly months (z ≥ 1.5σ). Green dashed line = current selection. "
     "Click a site marker on the map to change the site shown here."
 )
 
 # ── Logistic Growth — Vegetation Recovery Model (DN-A6) ──────────────────────
 
-st.write("")
-section_label(f"Vegetation Recovery — Logistic Growth Model · {tl_site}")
-
-from data_nature.models.ecology import LogisticGrowth  # noqa: E402
-from data_nature.viz.charts import logistic_growth_chart  # noqa: E402
-
-# Derive P0 from the site's current mean NDVI
-_site_ndvi = float(
-    monthly_df[monthly_df["site"] == tl_site]["ndvi"].mean()
-)
-
-lg_c1, lg_c2, lg_c3, lg_c4 = st.columns([1.5, 1.5, 1.5, 1.5])
-with lg_c1:
-    lg_P0 = st.slider(
-        "Initial cover (P₀)", 0.01, 0.95,
-        value=round(min(_site_ndvi, 0.9), 2),
-        step=0.01, key="lg_P0",
-        help="Starting vegetation density (NDVI proxy for this site).",
-    )
-with lg_c2:
-    lg_r = st.slider(
-        "Growth rate (r)", 0.05, 2.0, 0.4, step=0.05, key="lg_r",
-        help="Intrinsic vegetation growth rate.",
-    )
-with lg_c3:
-    lg_K = st.slider(
-        "Carrying capacity (K)", 0.3, 1.0, 0.85, step=0.05, key="lg_K",
-        help="Maximum sustainable vegetation cover for this land type.",
-    )
-with lg_c4:
-    lg_years = st.slider(
-        "Simulation years", 5, 50, 20, step=5, key="lg_years",
-    )
-
-lg_steps = lg_years * 10
-lg_df = LogisticGrowth(P0=lg_P0, r=lg_r, K=lg_K).simulate(steps=lg_steps, dt=0.1)
-lg_df["t"] = lg_df["t"] / 10  # convert to years
-
-st.plotly_chart(logistic_growth_chart(lg_df, K=lg_K), use_container_width=True)
-st.caption(
-    f"Logistic growth model for **{tl_site}**. "
-    f"Equation: dP/dt = r·P·(1 − P/K). "
-    f"Initial cover P₀ = {lg_P0:.2f} (site mean NDVI). "
-    "The curve saturates at carrying capacity K — the maximum vegetation density "
-    "sustainable under local climate and land-use conditions."
-)

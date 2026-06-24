@@ -9,6 +9,10 @@ for _p in (str(_ROOT / "src"), str(_APP)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import datetime as _dt
+import os
+
+import ee  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 from ui import page_hero, section_label, set_page_config  # noqa: E402
@@ -24,7 +28,7 @@ set_page_config(title="Anomaly Detection")
 page_hero(
     title="🚨 Anomaly Detection & Alerts",
     subtitle="Land Surface Temperature anomalies detected via z-score analysis against a historical per-site baseline. Filter by site, date, or severity.",
-    pills=["🌡️ LST z-Score", "📅 2000–2025", "🔴 3 Severity Levels", "📍 8 Sites"],
+    pills=["🌡️ LST z-Score", f"📅 2000–{_dt.date.today().year}", "🔴 3 Severity Levels", "📍 8 Sites"],
     emoji="🚨",
 )
 
@@ -89,7 +93,182 @@ def _load() -> tuple[pd.DataFrame, pd.DataFrame, bool]:
     return ts_df, anom_df, False
 
 
+# ── GEE initialisation ────────────────────────────────────────────────────────
+
+
+@st.cache_resource(show_spinner=False)
+def _init_gee() -> bool:
+    try:
+        key_json = st.secrets.get("gee", {}).get("key_json") or os.environ.get("GEE_KEY_JSON", "")
+        sa_email = st.secrets.get("gee", {}).get("service_account") or os.environ.get("GEE_SERVICE_ACCOUNT", "")
+        if key_json and sa_email:
+            ee.Initialize(ee.ServiceAccountCredentials(sa_email, key_data=key_json), project="datanature")
+            return True
+    except Exception:
+        pass
+    try:
+        ee.Initialize(project="datanature")
+        return True
+    except Exception:
+        return False
+
+
+GEE_OK = _init_gee()
+
+
+@st.cache_data(ttl=3600, show_spinner="Fetching live MODIS data from GEE…")
+def _fetch_live_months(missing_months: tuple[tuple[int, int], ...]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    For each (year, month) not yet in the CSV, sample LST + NDVI from GEE
+    at all 8 sites, compute z-scores against the 2000-2015 baseline, and
+    return new ts rows and any anomalies found.
+    """
+    from data_nature.stats.anomaly import BASELINE_START, BASELINE_END, _classify_severity, DEFAULT_THRESHOLDS
+
+    locs = pd.read_csv(_PROCESSED / "site_locations.csv")
+    monthly_hist = pd.read_csv(_PROCESSED / "site_monthly.csv")
+
+    # Precompute 2000-2015 baselines per site/month
+    ref = monthly_hist[(monthly_hist["year"] >= BASELINE_START) & (monthly_hist["year"] <= BASELINE_END)]
+    lst_base = ref.groupby(["site", "month"])["lst"].agg(baseline="mean", baseline_std="std").reset_index()
+    ndvi_base = ref.groupby(["site", "month"])["ndvi"].agg(ndvi_mean="mean", ndvi_std="std").reset_index()
+
+    new_ts_rows, new_anom_rows = [], []
+
+    for y, mo in missing_months:
+        end_mo = mo % 12 + 1
+        end_y = y + (1 if mo == 12 else 0)
+        start = f"{y}-{mo:02d}-01"
+        end = f"{end_y}-{end_mo:02d}-01"
+
+        lst_img = (
+            ee.ImageCollection("MODIS/061/MOD11A1")
+            .filterDate(start, end)
+            .select("LST_Day_1km")
+            .mean()
+            .multiply(0.02)
+            .subtract(273.15)
+        )
+
+        # NDVI: fall back to most recent if current month unavailable
+        ndvi_col = ee.ImageCollection("MODIS/061/MOD13Q1").filterDate(start, end).select("NDVI")
+        if ndvi_col.size().getInfo() == 0:
+            ndvi_col = ee.ImageCollection("MODIS/061/MOD13Q1").select("NDVI").sort("system:time_start", False).limit(1)
+        ndvi_img = ndvi_col.mean().multiply(0.0001)
+
+        # Get previous month's NDVI per site for ndvi_change
+        prev = pd.Timestamp(year=y, month=mo, day=1) - pd.DateOffset(months=1)
+        prev_ndvi = monthly_hist[
+            (monthly_hist["year"] == prev.year) & (monthly_hist["month"] == prev.month)
+        ][["site", "ndvi"]].set_index("site")["ndvi"].to_dict()
+
+        for _, loc in locs.iterrows():
+            site = loc["site"]
+            pt = ee.Geometry.Point([float(loc["lng"]), float(loc["lat"])])
+            try:
+                lst_val = lst_img.sample(pt, scale=1000).first().get("LST_Day_1km").getInfo()
+                ndvi_val = ndvi_img.sample(pt, scale=250).first().get("NDVI").getInfo()
+            except Exception:
+                continue
+            if lst_val is None:
+                continue
+
+            lst_val = round(float(lst_val), 2)
+            ndvi_val = round(float(ndvi_val), 4) if ndvi_val is not None else None
+            date = pd.Timestamp(year=y, month=mo, day=1)
+
+            # Baseline for this site/month
+            b = lst_base[(lst_base["site"] == site) & (lst_base["month"] == mo)]
+            baseline = float(b["baseline"].iloc[0]) if not b.empty else None
+            baseline_std = float(b["baseline_std"].iloc[0]) if not b.empty else None
+
+            new_ts_rows.append({
+                "date": date, "site": site, "lst": lst_val,
+                "baseline_mean": baseline, "baseline_std": baseline_std,
+            })
+
+            if baseline is not None and baseline_std and baseline_std > 0:
+                z = round((lst_val - baseline) / baseline_std, 4)
+                sev = _classify_severity(z, DEFAULT_THRESHOLDS)
+                if sev:
+                    ndvi_change = round(ndvi_val - prev_ndvi[site], 4) if ndvi_val and site in prev_ndvi else None
+                    new_anom_rows.append({
+                        "date": date, "site": site, "lst": lst_val,
+                        "baseline": baseline, "z_score": z,
+                        "severity": sev, "status": "New",
+                        "ndvi_change": ndvi_change,
+                    })
+
+    ts_new = pd.DataFrame(new_ts_rows) if new_ts_rows else pd.DataFrame(columns=["date", "site", "lst", "baseline_mean", "baseline_std"])
+    anom_new = pd.DataFrame(new_anom_rows) if new_anom_rows else pd.DataFrame(columns=["date", "site", "lst", "baseline", "z_score", "severity", "status", "ndvi_change"])
+    return ts_new, anom_new
+
+
 ts_df, anom_df, _REAL_DATA = _load()
+
+# ── Append live GEE data for months not yet in the CSV ───────────────────────
+
+if GEE_OK and _REAL_DATA:
+    _today = _dt.date.today()
+    _latest = pd.Timestamp(ts_df["date"].max())
+    _missing = []
+    _cursor = _latest + pd.DateOffset(months=1)
+    while _cursor.date() < _today.replace(day=1):
+        _missing.append((_cursor.year, _cursor.month))
+        _cursor += pd.DateOffset(months=1)
+
+    if _missing:
+        _live_ts, _live_anom = _fetch_live_months(tuple(_missing))
+        if not _live_ts.empty:
+            ts_df = pd.concat([ts_df, _live_ts], ignore_index=True).sort_values(["site", "date"]).reset_index(drop=True)
+        if not _live_anom.empty:
+            anom_df = pd.concat([anom_df, _live_anom], ignore_index=True).sort_values("date").reset_index(drop=True)
+            st.info(f"🛰️ {len(_live_anom)} live anomaly event(s) detected from GEE for months not yet in the dataset.")
+
+    # ── Live current-month metrics ────────────────────────────────────────────
+    _now = _dt.date.today()
+    _cur_month_ts, _ = _fetch_live_months(((_now.year, _now.month),))
+
+    if not _cur_month_ts.empty:
+        _month_name = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][_now.month]
+        section_label(f"🛰️ Live — {_month_name} {_now.year} (current month)")
+
+        _sorted_rows = _cur_month_ts.sort_values("site").reset_index(drop=True)
+        _cards_html = ""
+        for _row_start in (0, 4):
+            _cards_html += '<div class="kpi-row">'
+            for _, _row in _sorted_rows.iloc[_row_start:_row_start + 4].iterrows():
+                _z = None
+                if pd.notna(_row.get("baseline_mean")) and pd.notna(_row.get("baseline_std")) and _row["baseline_std"] > 0:
+                    _z = (_row["lst"] - _row["baseline_mean"]) / _row["baseline_std"]
+
+                if _z is None:
+                    _color = "#1C1B18"
+                    _badge = ""
+                elif _z >= 3.5:
+                    _color = "#DC2626"
+                    _badge = " 🔴"
+                elif _z >= 2.5:
+                    _color = "#EA580C"
+                    _badge = " 🟠"
+                elif _z >= 1.5:
+                    _color = "#CA8A04"
+                    _badge = " 🟡"
+                else:
+                    _color = "#166534"
+                    _badge = " ✅"
+
+                _z_str = f"{_z:+.2f}σ" if _z is not None else "—"
+                _site_label = _row["site"].replace("_", " ")
+                _cards_html += f"""
+                <div class="kpi-card">
+                  <div class="kpi-label">{_site_label}</div>
+                  <div class="kpi-value" style="font-size:1.3em;color:{_color}">{_row['lst']:.1f}°C{_badge}</div>
+                  <div class="kpi-sub">z = {_z_str}</div>
+                </div>"""
+            _cards_html += "</div>"
+        st.markdown(_cards_html, unsafe_allow_html=True)
+        st.caption(f"Live LST from MODIS MOD11A1 sampled at each site for {_month_name} {_now.year}. z-score vs 2010–2023 baseline. ✅ Normal · 🟡 Warning · 🟠 Severe · 🔴 Critical")
 
 SITES = ["All sites"] + sorted(ts_df["site"].unique())
 
@@ -433,75 +612,8 @@ if total > 0 and selected_idx is not None:
 fig = anomaly_timeseries_chart(site_ts, site_anom, selected_event=sel_event)
 st.plotly_chart(fig, use_container_width=True)
 st.caption(
-    f"Monthly LST record for **{chart_site}** (2000–2025). "
+    f"Monthly LST record for **{chart_site}** (2000–{_dt.date.today().year}). "
     "Coloured markers = detected anomalies (red=Critical, orange=Severe, yellow=Warning). "
     "★ = currently selected event. Shaded bands show ±1σ / ±2σ historical range."
 )
 
-# ── Energy-Flow / Heat-Budget Model (DN-A6) ───────────────────────────────────
-
-st.write("")
-section_label(f"Heat-Budget Model — {chart_site}")
-
-from data_nature.models.ecology import EnergyFlow  # noqa: E402
-from data_nature.viz.charts import energy_flow_chart  # noqa: E402
-
-# Derive site-level defaults from the real data
-_site_rows = ts_df[ts_df["site"] == chart_site]
-_site_lst  = float(_site_rows["lst"].mean()) if not _site_rows.empty else 35.0
-
-# Load monthly data (cached) to derive site NDVI
-if "_monthly_df_cache" not in st.session_state:
-    try:
-        _m = pd.read_csv(_PROCESSED / "site_monthly.csv")
-    except Exception:
-        _m = pd.read_csv(_MOCK / "site_monthly.csv")
-    st.session_state["_monthly_df_cache"] = _m
-_monthly_all = st.session_state["_monthly_df_cache"]
-_site_ndvi = float(
-    _monthly_all[_monthly_all["site"] == chart_site]["ndvi"].mean()
-    if chart_site in _monthly_all["site"].values else 0.4
-)
-
-ef_c1, ef_c2, ef_c3, ef_c4 = st.columns([1.5, 1.5, 1.5, 1.5])
-with ef_c1:
-    ef_T0 = st.slider(
-        "Initial surface T (°C)", 20.0, 55.0,
-        value=round(min(max(_site_lst, 20.0), 55.0), 1),
-        step=0.5, key="ef_T0",
-        help="Starting surface temperature for this site (from real data mean).",
-    )
-with ef_c2:
-    ef_ndvi = st.slider(
-        "Current NDVI", 0.05, 0.90,
-        value=round(min(max(_site_ndvi, 0.05), 0.90), 2),
-        step=0.05, key="ef_ndvi",
-        help="Current vegetation index. Higher NDVI → stronger evapotranspirative cooling.",
-    )
-with ef_c3:
-    ef_ndvi_plant = st.slider(
-        "NDVI after planting", 0.05, 0.95,
-        value=round(min(max(_site_ndvi + 0.20, 0.05), 0.95), 2),
-        step=0.05, key="ef_ndvi_plant",
-        help="Projected NDVI after a planting intervention.",
-    )
-with ef_c4:
-    ef_solar = st.slider(
-        "Solar input (W m⁻²)", 200, 700, 450, step=25, key="ef_solar",
-        help="Mean incoming solar irradiance for this region.",
-    )
-
-_ef_kwargs = dict(T0=ef_T0, Q_solar=ef_solar, ndvi=ef_ndvi, T_amb=ef_T0 - 8.0)
-ef_df         = EnergyFlow(**_ef_kwargs).simulate(steps=365)
-ef_df_planted = EnergyFlow(**{**_ef_kwargs, "ndvi": ef_ndvi_plant}).simulate(steps=365)
-
-st.plotly_chart(energy_flow_chart(ef_df, df_planted=ef_df_planted), use_container_width=True)
-
-_delta_T = ef_df["T"].iloc[-1] - ef_df_planted["T"].iloc[-1]
-st.caption(
-    f"Heat-budget model for **{chart_site}**. "
-    f"Equation: dT/dt = [Q_in(t) − k·(1 + β·NDVI)·(T − T_amb)] / C. "
-    f"Dotted line = instantaneous equilibrium temperature. "
-    f"Planting intervention (NDVI {ef_ndvi:.2f} → {ef_ndvi_plant:.2f}) "
-    f"reduces steady-state surface temperature by ≈ **{_delta_T:.1f} °C**."
-)

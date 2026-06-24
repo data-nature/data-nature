@@ -10,6 +10,7 @@ LST   MODIS/061/MOD11A1   daily, 1 km, band ``LST_Day_1km`` × 0.02 − 273.15 (
 from __future__ import annotations
 
 import calendar
+import datetime
 import logging
 import os
 from pathlib import Path
@@ -24,6 +25,12 @@ _EE_INITIALIZED: bool = False
 
 _NDVI_COLLECTION = "MODIS/061/MOD13Q1"
 _LST_COLLECTION = "MODIS/061/MOD11A1"
+
+
+def _last_complete_month_end() -> str:
+    """Return the first day of the current month as an ISO string (exclusive end for last complete month)."""
+    today = datetime.date.today()
+    return today.replace(day=1).isoformat()
 
 _SITE_LOCATIONS_PATH = (
     Path(__file__).parents[3] / "data" / "processed" / "site_locations.csv"
@@ -182,11 +189,18 @@ def _extract_lst_monthly(
         Columns: ``year``, ``month``, ``lst``.  Empty DataFrame when no data
         is available.
     """
+    def _mask_cloudy(image: ee.Image) -> ee.Image:
+        qc = image.select("QC_Day")
+        # Bits 0-1: 00 = LST produced with good quality
+        good_quality = qc.bitwiseAnd(0b11).eq(0)
+        return image.select("LST_Day_1km").updateMask(good_quality)
+
     collection = (
         ee.ImageCollection(_LST_COLLECTION)
         .filterDate(start, end)
         .filterBounds(point)
-        .select("LST_Day_1km")
+        .select(["LST_Day_1km", "QC_Day"])
+        .map(_mask_cloudy)
     )
 
     records = []
@@ -232,7 +246,7 @@ def _extract_lst_monthly(
 def fetch_site_series(
     site: str,
     start: str = "2000-01-01",
-    end: str = "2026-01-01",
+    end: str | None = None,
 ) -> pd.DataFrame:
     """
     Fetch a tidy monthly time series of LST and NDVI for one named site.
@@ -251,7 +265,7 @@ def fetch_site_series(
         Defaults to ``"2000-01-01"``.
     end : str
         ISO date string for the end of the window, exclusive.
-        Defaults to ``"2026-01-01"``.
+        Defaults to the first day of the current month (last complete month).
 
     Returns
     -------
@@ -268,6 +282,8 @@ def fetch_site_series(
     ValueError
         If *site* is not found in ``site_locations.csv``.
     """
+    if end is None:
+        end = _last_complete_month_end()
     authenticate()
 
     sites_df = _load_sites()
@@ -303,7 +319,7 @@ def fetch_site_series(
 
 def run_pipeline(
     start: str = "2000-01-01",
-    end: str = "2026-01-01",
+    end: str | None = None,
     output_dir: str | Path | None = None,
 ) -> None:
     """
@@ -325,6 +341,8 @@ def run_pipeline(
         Destination directory for the raw CSV files.  Defaults to
         ``data/raw/`` relative to the project root.
     """
+    if end is None:
+        end = _last_complete_month_end()
     if output_dir is None:
         output_dir = Path(__file__).parents[3] / "data" / "raw"
     output_dir = Path(output_dir)
@@ -342,3 +360,127 @@ def run_pipeline(
             raise
         except Exception as exc:
             log.warning("Skipping %s — %s", site, exc)
+
+
+def fetch_site_grid(
+    site: str,
+    season_months: list[int],
+    grid_size: int = 10,
+    cell_lat: float = 0.0027,
+    cell_lng: float = 0.0032,
+    baseline_start: int = 2015,
+    baseline_end: int = 2023,
+) -> tuple["np.ndarray", "np.ndarray"]:
+    """
+    Fetch a real MODIS LST and NDVI spatial grid for a site and season.
+
+    Samples MODIS MOD11A1 (LST) and MOD13Q1 (NDVI) at each of the
+    ``grid_size × grid_size`` cell centres around the site, averaged over
+    ``baseline_start``–``baseline_end`` for the given season months.
+
+    Parameters
+    ----------
+    site : str
+        Site name matching ``data/processed/site_locations.csv``.
+    season_months : list[int]
+        Month numbers to include (e.g. [6, 7, 8] for Summer).
+    grid_size : int
+        Number of cells per side. Default 10.
+    cell_lat, cell_lng : float
+        Cell dimensions in degrees. Default ≈ 300 m.
+    baseline_start, baseline_end : int
+        Year range to average over for stable seasonal values.
+
+    Returns
+    -------
+    (lst_grid, ndvi_grid) : tuple of (grid_size, grid_size) float64 arrays
+        LST in °C, NDVI in [0, 1].
+
+    Raises
+    ------
+    EEAuthError
+        If GEE cannot be authenticated.
+    ValueError
+        If site is not found.
+    """
+    import numpy as np
+
+    try:
+        ee.Initialize(project="datanature")
+    except Exception:
+        pass
+
+    sites_df = _load_sites()
+    row = sites_df[sites_df["site"] == site]
+    if row.empty:
+        raise ValueError(f"Site '{site}' not found in site_locations.csv.")
+    row = row.iloc[0]
+    center_lat, center_lng = float(row["lat"]), float(row["lng"])
+
+    # Build a FeatureCollection of grid cell centres
+    half = grid_size / 2.0
+    features = []
+    for i in range(grid_size):
+        for j in range(grid_size):
+            lat = center_lat + (half - i - 0.5) * cell_lat
+            lng = center_lng + (j - half + 0.5) * cell_lng
+            features.append(
+                ee.Feature(ee.Geometry.Point([lng, lat]), {"row": i, "col": j})
+            )
+    fc = ee.FeatureCollection(features)
+
+    month_filter = ee.Filter.Or(
+        [ee.Filter.calendarRange(m, m, "month") for m in season_months]
+    )
+    year_filter = ee.Filter.calendarRange(baseline_start, baseline_end, "year")
+
+    def _mask_lst(image: ee.Image) -> ee.Image:
+        qc = image.select("QC_Day")
+        good = qc.bitwiseAnd(0b11).eq(0)
+        return image.select("LST_Day_1km").updateMask(good)
+
+    lst_img = (
+        ee.ImageCollection(_LST_COLLECTION)
+        .filter(year_filter)
+        .filter(month_filter)
+        .select(["LST_Day_1km", "QC_Day"])
+        .map(_mask_lst)
+        .mean()
+        .multiply(0.02)
+        .subtract(273.15)
+        .rename("lst")
+    )
+
+    ndvi_img = (
+        ee.ImageCollection(_NDVI_COLLECTION)
+        .filter(year_filter)
+        .filter(month_filter)
+        .select("NDVI")
+        .mean()
+        .multiply(0.0001)
+        .rename("ndvi")
+    )
+
+    sampled = (
+        lst_img.addBands(ndvi_img)
+        .sampleRegions(collection=fc, scale=250, geometries=False)
+        .getInfo()
+    )
+
+    lst_grid = np.full((grid_size, grid_size), np.nan)
+    ndvi_grid = np.full((grid_size, grid_size), np.nan)
+    for feat in sampled["features"]:
+        props = feat["properties"]
+        i, j = int(props["row"]), int(props["col"])
+        if props.get("lst") is not None:
+            lst_grid[i, j] = props["lst"]
+        if props.get("ndvi") is not None:
+            ndvi_grid[i, j] = props["ndvi"]
+
+    # Fill any missing cells with site mean
+    lst_mean = float(np.nanmean(lst_grid)) if not np.all(np.isnan(lst_grid)) else 35.0
+    ndvi_mean = float(np.nanmean(ndvi_grid)) if not np.all(np.isnan(ndvi_grid)) else 0.3
+    lst_grid = np.where(np.isnan(lst_grid), lst_mean, lst_grid)
+    ndvi_grid = np.where(np.isnan(ndvi_grid), ndvi_mean, ndvi_grid)
+
+    return lst_grid, np.clip(ndvi_grid, 0.01, 0.99)

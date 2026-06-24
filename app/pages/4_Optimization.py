@@ -15,6 +15,7 @@ import matplotlib.colors as mcolors  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
+import ee  # noqa: E402
 from streamlit_folium import st_folium  # noqa: E402
 from ui import page_hero, section_label, set_page_config  # noqa: E402
 
@@ -60,6 +61,20 @@ def _load() -> tuple[pd.DataFrame, pd.DataFrame, bool]:
 
 monthly_df, locs_df, _REAL_DATA = _load()
 SITES = sorted(monthly_df["site"].unique())
+
+# ── GEE initialisation ────────────────────────────────────────────────────────
+
+
+@st.cache_resource(show_spinner=False)
+def _init_gee() -> bool:
+    try:
+        ee.Initialize(project="datanature")
+        return True
+    except Exception:
+        return False
+
+
+GEE_OK: bool = _init_gee()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -123,7 +138,24 @@ run_clicked = st.button("▶ Run Genetic Algorithm", type="primary", use_contain
 # ── GA execution ──────────────────────────────────────────────────────────────
 
 if run_clicked:
-    lst0, ndvi0 = init_site_grid(monthly_df, site, season)
+    _used_real_grid = False
+    if GEE_OK:
+        with st.spinner("🛰️ Fetching real MODIS pixel data from GEE…"):
+            try:
+                from data_nature.ingest.earth_engine import fetch_site_grid
+                lst0, ndvi0 = fetch_site_grid(site, SEASON_MONTHS[season])
+                _used_real_grid = True
+            except Exception as _gee_err:
+                st.warning(f"GEE fetch failed ({_gee_err}) — falling back to estimated grid.")
+                lst0, ndvi0 = init_site_grid(monthly_df, site, season)
+    else:
+        lst0, ndvi0 = init_site_grid(monthly_df, site, season)
+
+    if _used_real_grid:
+        st.success("🛰️ Grid built from real MODIS LST & NDVI pixels (2015–2023 seasonal mean).")
+    else:
+        st.info("⚠️ Grid estimated from site seasonal averages (GEE unavailable).")
+
     pb = st.progress(0, text="Initialising population…")
 
     def _cb(gen: int, total: int, best_fit: float) -> None:
