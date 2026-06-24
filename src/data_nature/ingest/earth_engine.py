@@ -78,13 +78,16 @@ def authenticate() -> None:
             ee.Initialize(credentials, project=project)
             log.info("Earth Engine initialised via service account (%s).", sa_email)
         else:
-            log.warning(
-                "GEE_SERVICE_ACCOUNT_EMAIL / GEE_PRIVATE_KEY_PATH not set — "
-                "falling back to interactive authentication."
-            )
-            ee.Authenticate()
-            ee.Initialize(project=project)
-            log.info("Earth Engine initialised via interactive auth.")
+            # Try cached credentials first (~/.config/earthengine/credentials).
+            # Only fall back to interactive auth if that fails.
+            try:
+                ee.Initialize(project=project)
+                log.info("Earth Engine initialised via cached credentials.")
+            except Exception:
+                log.warning("Cached credentials unavailable — trying interactive auth.")
+                ee.Authenticate()
+                ee.Initialize(project=project)
+                log.info("Earth Engine initialised via interactive auth.")
         _EE_INITIALIZED = True
     except Exception as exc:
         raise EEAuthError(
