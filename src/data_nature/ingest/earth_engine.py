@@ -405,10 +405,7 @@ def fetch_site_grid(
     """
     import numpy as np
 
-    try:
-        ee.Initialize(project="datanature")
-    except Exception:
-        pass
+    authenticate()
 
     sites_df = _load_sites()
     row = sites_df[sites_df["site"] == site]

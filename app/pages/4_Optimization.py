@@ -15,7 +15,6 @@ import matplotlib.colors as mcolors  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
-import ee  # noqa: E402
 from streamlit_folium import st_folium  # noqa: E402
 from ui import page_hero, section_label, set_page_config  # noqa: E402
 
@@ -68,7 +67,8 @@ SITES = sorted(monthly_df["site"].unique())
 @st.cache_resource(show_spinner=False)
 def _init_gee() -> bool:
     try:
-        ee.Initialize(project="datanature")
+        from data_nature.ingest.earth_engine import authenticate
+        authenticate()
         return True
     except Exception:
         return False
