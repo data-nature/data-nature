@@ -233,32 +233,56 @@ def _opt_map(
 
 # ── Map + convergence ─────────────────────────────────────────────────────────
 
-section_label(
+_LST_PALETTE = ["#313695","#74add1","#e0f3f8","#fee090","#f46d43","#d73027","#a50026"]
+
+def _legend_html(zmin: float, zmax: float) -> str:
+    gradient = ", ".join(_LST_PALETTE)
+    mid = (zmin + zmax) / 2
+    return (
+        f'<div style="margin:4px 0 10px">'
+        f'<div style="height:10px;border-radius:6px;'
+        f'background:linear-gradient(90deg,{gradient});border:1px solid #e5e7eb"></div>'
+        f'<div style="display:flex;justify-content:space-between;'
+        f'font-size:0.68em;color:#6b7280;margin-top:3px">'
+        f"<span>{zmin:.0f} °C</span><span>{mid:.0f} °C</span><span>{zmax:.0f} °C</span>"
+        f"</div></div>"
+    )
+
+_map_title = (
     f"Results — {res_site} · {res_season} · Budget {res_budget} cells"
     + (f"  (Solution {sel_ + 1})" if sel_ > 0 else "  (Best solution)")
 )
+section_label(_map_title)
 
-col_map, col_conv = st.columns([3, 2], gap="medium")
+_zmin = float(lst_.min()) - 0.5
+_zmax = float(lst_.max()) + 0.5
+_empty_mask = np.zeros((GRID, GRID), dtype=bool)
 
-with col_map:
-    st.markdown(
-        '<p style="font-size:0.78em;font-weight:700;color:#6b7280;'
-        'text-transform:uppercase;letter-spacing:0.08em;margin:0 0 4px">'
-        "Optimal Planting Map  🟢 = plant here</p>",
-        unsafe_allow_html=True,
+col_maps, col_conv = st.columns([4, 2], gap="medium")
+
+with col_maps:
+    cm_before, cm_after = st.columns(2)
+    _map_label_style = (
+        'font-size:0.78em;font-weight:700;color:#6b7280;'
+        'text-transform:uppercase;letter-spacing:0.08em;margin:0 0 4px'
     )
-    st_folium(
-        _opt_map(lst_, ndvi_, best_mask, slat, slng),
-        height=340,
-        returned_objects=[],
-        key="opt_map",
-    )
+    with cm_before:
+        st.markdown(f'<p style="{_map_label_style}">Current State</p>', unsafe_allow_html=True)
+        st_folium(
+            _opt_map(lst_, ndvi_, _empty_mask, slat, slng),
+            height=310, returned_objects=[], key="opt_map_curr",
+        )
+    with cm_after:
+        st.markdown(f'<p style="{_map_label_style}">Optimal Planting  🟢 = plant here</p>', unsafe_allow_html=True)
+        st_folium(
+            _opt_map(lst_, ndvi_, best_mask, slat, slng),
+            height=310, returned_objects=[], key="opt_map_plan",
+        )
+    st.markdown(_legend_html(_zmin, _zmax), unsafe_allow_html=True)
 
 with col_conv:
     st.markdown(
-        '<p style="font-size:0.78em;font-weight:700;color:#6b7280;'
-        'text-transform:uppercase;letter-spacing:0.08em;margin:0 0 4px">'
-        "Convergence</p>",
+        f'<p style="{_map_label_style}">Convergence</p>',
         unsafe_allow_html=True,
     )
     st.plotly_chart(convergence_chart(history_), use_container_width=True)
