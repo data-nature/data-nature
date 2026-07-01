@@ -25,10 +25,6 @@ from data_nature.models.cellular_automaton import (        # noqa: E402
     COOLING, DIFF, SAFE_LST, GRID_SIZE as GRID,
     HeatCA, init_grid, make_veg_mask, SEASON_MONTHS,
 )
-from data_nature.models.ecology import (                   # noqa: E402
-    LotkaVolterra, simulate_lv,
-    LogisticGrowth, simulate_logistic,
-)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -328,50 +324,6 @@ st.caption(
     f"Cooling coefficient: {COOLING:.0f} °C per NDVI unit. "
     f"Diffusion α = {DIFF}. Safe threshold: {SAFE_LST:.0f} °C."
 )
-
-# ── Lotka-Volterra section ────────────────────────────────────────────────────
-
-section_label("Population Dynamics — Native vs Invasive Vegetation")
-
-lv_col1, lv_col2 = st.columns([1, 2])
-with lv_col1:
-    st.caption("Adjust Lotka-Volterra parameters")
-    lv_N0  = st.slider("Initial native density",   0.1, 1.0, 0.8, 0.05)
-    lv_I0  = st.slider("Initial invasive density", 0.0, 1.0, 0.2, 0.05)
-    lv_rn  = st.slider("Native growth rate",       0.1, 1.0, 0.3, 0.05)
-    lv_ri  = st.slider("Invasive growth rate",     0.1, 1.0, 0.5, 0.05)
-    lv_alpha = st.slider("α (invasive→native competition)", 0.1, 2.0, 1.2, 0.1)
-    lv_beta  = st.slider("β (native→invasive competition)", 0.1, 2.0, 0.8, 0.1)
-
-with lv_col2:
-    lv_df = simulate_lv(
-        LotkaVolterra(N0=lv_N0, I0=lv_I0, r_native=lv_rn, r_invasive=lv_ri,
-                      alpha=lv_alpha, beta=lv_beta),
-        steps=300, dt=0.1,
-    )
-    fig_lv = go.Figure()
-    fig_lv.add_trace(go.Scatter(
-        x=lv_df["t"], y=lv_df["native"], name="Native",
-        line=dict(color="#2E7D32", width=2), mode="lines",
-    ))
-    fig_lv.add_trace(go.Scatter(
-        x=lv_df["t"], y=lv_df["invasive"], name="Invasive",
-        line=dict(color="#C62828", width=2), mode="lines",
-    ))
-    fig_lv.update_layout(
-        height=280, margin=dict(t=10, b=20, l=0, r=10),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#FAFAFA",
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        xaxis=dict(showgrid=True, gridcolor="#F3F4F6", title="Time"),
-        yaxis=dict(showgrid=True, gridcolor="#F3F4F6", title="Population density",
-                   range=[0, 1.1]),
-    )
-    st.plotly_chart(fig_lv, use_container_width=True)
-    final_n = lv_df["native"].iloc[-1]
-    final_i = lv_df["invasive"].iloc[-1]
-    winner  = "Native 🌿" if final_n > final_i else "Invasive ⚠️" if final_i > final_n else "Coexistence"
-    st.caption(f"Outcome at t=30: Native={final_n:.3f}, Invasive={final_i:.3f} → **{winner}**")
 
 # ── Save scenario ─────────────────────────────────────────────────────────────
 
