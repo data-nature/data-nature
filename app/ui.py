@@ -33,6 +33,26 @@ h1, h2, h3 {
   border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* sidebar text — override theme dark textColor so it reads on dark green */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] a,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] div {
+  color: #D9EED9 !important;
+  font-size: 1.05rem;
+}
+[data-testid="stSidebarNavLink"] {
+  font-size: 1.05rem !important;
+  font-weight: 500 !important;
+  color: #D9EED9 !important;
+}
+[data-testid="stSidebarNavLink"]:hover,
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
 /* ── buttons ── */
 .stButton > button {
   border-radius: 8px;
