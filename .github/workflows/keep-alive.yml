@@ -2,7 +2,7 @@ name: Streamlit Keep-Alive
 
 on:
   schedule:
-    - cron: "0 */10 * * *" # Runs every 10 hours
+    - cron: "0 */7 * * *" # Runs every 10 hours
   workflow_dispatch: # Allows you to trigger it manually
 
 jobs:
