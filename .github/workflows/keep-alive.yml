@@ -1,20 +1,11 @@
-name: Streamlit Keep-Alive
-
+name: Keep Streamlit Awake
 on:
   schedule:
-    - cron: "0 */7 * * *" # Runs every 10 hours
-  workflow_dispatch: # Allows you to trigger it manually
-
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch:
 jobs:
-  keep-alive:
+  ping:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Push empty commit
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git commit --allow-empty -m "chore: keep Streamlit app awake"
-          git push
+      - name: Ping the app
+        run: curl -s -o /dev/null -L "https://<your-app>.streamlit.app/"
